@@ -97,10 +97,7 @@ def build_embedding_network(input_shape=(IMG_SIZE, IMG_SIZE, IMG_CHANNELS),
     x = layers.Dropout(dropout_rate)(x)
 
     x = layers.Dense(embedding_dim, name="embedding")(x)
-    outputs = layers.Lambda(
-        lambda z: tf.math.l2_normalize(z, axis=1),
-        name="l2_normalize"
-    )(x)
+    outputs = L2Normalize(name="l2_normalize")(x)
 
     model = Model(inputs, outputs, name="embedding_network")
     return model, base
@@ -141,20 +138,23 @@ def circle_loss(y_true, y_pred, m=CIRCLE_M, gamma=CIRCLE_GAMMA):
     pos_sim = tf.boolean_mask(sim, y_true < 0.5)
     neg_sim = tf.boolean_mask(sim, y_true >= 0.5)
 
-    if tf.size(pos_sim) == 0 or tf.size(neg_sim) == 0:
-        return tf.constant(0.0, dtype=tf.float32)
+    has_pos = tf.greater(tf.size(pos_sim), 0)
+    has_neg = tf.greater(tf.size(neg_sim), 0)
 
-    alpha_p = tf.maximum(1.0 + m - pos_sim, 0.0)
-    alpha_n = tf.maximum(neg_sim + m, 0.0)
+    def pos_term():
+        alpha_p = tf.maximum(1.0 + m - pos_sim, 0.0)
+        l_pos = tf.reduce_sum(tf.exp(-gamma * alpha_p * (pos_sim - (1.0 - m))))
+        return tf.math.log1p(l_pos)
 
-    delta_p = 1.0 - m
-    delta_n = m
+    def neg_term():
+        alpha_n = tf.maximum(neg_sim + m, 0.0)
+        l_neg = tf.reduce_sum(tf.exp(gamma * alpha_n * (neg_sim - m)))
+        return tf.math.log1p(l_neg)
 
-    l_pos = tf.reduce_sum(tf.exp(-gamma * alpha_p * (pos_sim - delta_p)))
-    l_neg = tf.reduce_sum(tf.exp(gamma * alpha_n * (neg_sim - delta_n)))
-
+    zero = tf.constant(0.0, dtype=tf.float32)
     batch = tf.cast(tf.shape(y_true)[0], tf.float32)
-    return (tf.math.log1p(l_pos) + tf.math.log1p(l_neg)) / batch
+    return (tf.cond(has_pos, pos_term, lambda: zero)
+            + tf.cond(has_neg, neg_term, lambda: zero)) / batch
 
 
 def mse_loss(y_true, y_pred):
@@ -172,6 +172,16 @@ def get_pair_loss(loss_type=LOSS_TYPE):
 # =============================================================================
 # SIAMESE MODELS
 # =============================================================================
+@tf.keras.utils.register_keras_serializable()
+class L2Normalize(layers.Layer):
+    """L2-normalizes the embedding along axis 1 (replaces a Lambda so the
+    model survives save/load and TFLite conversion)."""
+
+    def call(self, inputs):
+        return tf.math.l2_normalize(inputs, axis=1)
+
+
+@tf.keras.utils.register_keras_serializable()
 class DistanceLayer(layers.Layer):
     """Euclidean distance between two L2-normalized embeddings."""
 
@@ -275,8 +285,8 @@ def unfreeze_all(embedding_net, backbone):
 
 
 def count_trainable_params(model):
-    total = int(tf.keras.utils.layer_utils.count_params(model.trainable_weights))
-    non_trainable = int(tf.keras.utils.layer_utils.count_params(model.non_trainable_weights))
+    total = sum(int(tf.size(w)) for w in model.trainable_weights)
+    non_trainable = sum(int(tf.size(w)) for w in model.non_trainable_weights)
     log.info(f"Trainable params: {total:,}")
     log.info(f"Non-trainable params: {non_trainable:,}")
     log.info(f"Total params: {total + non_trainable:,}")

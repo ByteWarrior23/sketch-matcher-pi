@@ -17,6 +17,17 @@ __pycache__/
 # Notebook/checkpoint metadata
 .ipynb_checkpoints/
 
+# Test assets (captured webcam images - private, never commit)
+/sketch-matcher-pi/tests/model/test_images/
+/sketch-matcher-pi/tests/**/*.jpg
+/sketch-matcher-pi/tests/**/*.png
+
+# Generated Pi deploy artifacts (tflite + embeddings, built by export)
+/sketch-matcher-pi/pi_deploy/model_data/
+
+# Session tracking files (not part of the repo)
+/sketch-matcher-pi/session.md
+
 # Root-level loose files (not part of the repo)
 SESSION_NOTES.md
 pi_deploy.zip

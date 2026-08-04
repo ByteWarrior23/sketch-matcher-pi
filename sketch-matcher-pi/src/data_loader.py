@@ -107,6 +107,7 @@ class SketchPhotoPairGenerator(Sequence):
                  shuffle=True, augment=False, teacher_sketch_embs=None,
                  teacher_photo_embs=None, hard_negative_ratio=0.0,
                  confusable_pairs=None):
+        super().__init__()
         self.sketches = sketches
         self.photos = photos
         self.sk_labels = np.asarray(sketch_labels, dtype=np.int64)
@@ -232,8 +233,8 @@ class SketchPhotoPairGenerator(Sequence):
                 t_ph = t_ph[:k]
 
         if self.distill:
-            return [batch_sk, batch_ph], [labels, t_sk, t_ph]
-        return [batch_sk, batch_ph], labels
+            return (batch_sk, batch_ph), (labels, t_sk, t_ph)
+        return (batch_sk, batch_ph), labels
 
     def on_epoch_end(self):
         if self.shuffle:

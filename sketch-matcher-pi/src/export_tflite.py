@@ -57,7 +57,7 @@ def convert_to_tflite(model_path, quantize=TFLITE_QUANTIZE):
       tflite_model: bytes of the converted model
     """
     log.info(f"Loading model from: {model_path}")
-    model = tf.keras.models.load_model(model_path, compile=False)
+    model = tf.keras.models.load_model(model_path, compile=False, safe_mode=False)
 
     # Check input shape (should be [None, 224, 224, 3])
     input_shape = model.input_shape
