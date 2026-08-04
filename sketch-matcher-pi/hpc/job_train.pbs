@@ -1,0 +1,51 @@
+#!/bin/bash
+#PBS -N sketch_train
+#PBS -q workq
+#PBS -l select=1:ncpus=32:ngpus=1
+#PBS -l walltime=120:00:00
+#PBS -j oe
+#PBS -o train.log
+
+# GPU-ONLY queue job: teacher + student distillation training.
+# walltime=120h (5 days): teacher (ConvNeXtTiny) alone can take ~24-48h,
+# student adds ~8-24h, so 24h walltime would get the job killed mid-run.
+# If the cluster caps walltime lower, split training into teacher/student
+# jobs instead (ask admin). TODO: check max allowed walltime on workq.
+# NOTE: workq kills CPU-only jobs (audit script) -- keep preprocess/eval/export
+# in cpuq jobs. This job runs ONLY src/train.py (holds the GPU the whole time).
+#
+# Run from the project root on the HPC:
+#   cd /Data/<username>/sketch_matcher && qsub hpc/job_train.pbs
+
+cd "$PBS_O_WORKDIR"
+
+# --- Conda env ---
+source /apps/compilers/anaconda3/etc/profile.d/conda.sh
+conda activate sketch_matcher
+export PYTHONNOUSERSITE=1
+TF_PYTHON="$CONDA_PREFIX/bin/python"
+echo "Using python: $TF_PYTHON"
+
+# --- MIG GPU selection (1 GPU per user, per HPC manual) ---
+# Prefer a free MIG device. Manually pin one instead by uncommenting:
+#   export CUDA_VISIBLE_DEVICES=MIG-<uuid>   # from: nvidia-smi -L
+if [ -z "$CUDA_VISIBLE_DEVICES" ]; then
+  USED=$(nvidia-smi --query-compute-apps=gpu_uuid --format=csv,noheader 2>/dev/null | sort -u)
+  for u in $(nvidia-smi -L 2>/dev/null | grep MIG | sed 's/.*(UUID: //; s/)//'); do
+    if ! printf '%s\n' "$USED" | grep -q "$u"; then
+      export CUDA_VISIBLE_DEVICES="$u"
+      break
+    fi
+  done
+fi
+echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+nvidia-smi -L
+
+# --- Optional: shrink batch sizes for a SMALL MIG slice (OOM guard) ---
+# Defaults are 256/128/64 (fine on a full H100 / large MIG). On e.g. a
+# 1g.10gb slice, set these much lower:
+# export SKETCH_BATCH1=32
+# export SKETCH_BATCH2=32
+# export SKETCH_BATCH3=16
+
+$TF_PYTHON src/train.py

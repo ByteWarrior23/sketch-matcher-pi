@@ -1,0 +1,33 @@
+#!/bin/bash
+#PBS -N sketch_preprocess
+#PBS -q cpuq
+#PBS -l select=1:ncpus=16
+#PBS -l walltime=12:00:00
+#PBS -j oe
+#PBS -o preprocess.log
+
+# CPU-ONLY queue job: download (optional) + preprocess datasets.
+# Raw data must live under /Data (NOT home dir) -- copy it there first:
+#   scp -r data/raw user@10.10.11.201:/Data/<username>/sketch_matcher/data/
+#
+# Run from the project root on the HPC:
+#   cd /Data/<username>/sketch_matcher && qsub hpc/job_preprocess.pbs
+
+cd "$PBS_O_WORKDIR"
+
+# --- Conda env (created once, per HPC manual) ---
+#   conda create -n sketch_matcher python=3.10 -y
+#   conda activate sketch_matcher
+#   pip install "tensorflow[and-cuda]"
+#   pip install opencv-python-headless tqdm requests scikit-learn
+source /apps/compilers/anaconda3/etc/profile.d/conda.sh
+conda activate sketch_matcher
+export PYTHONNOUSERSITE=1
+TF_PYTHON="$CONDA_PREFIX/bin/python"
+echo "Using python: $TF_PYTHON"
+
+# --- Optional: download datasets (only if NOT already copied to /Data) ---
+# Requires kaggle.json at ~/.kaggle/kaggle.json + internet access on HPC.
+# $TF_PYTHON src/download_data.py --quickdraw --tuberlin --imagenetsketch
+
+$TF_PYTHON src/preprocess.py

@@ -1,0 +1,26 @@
+# Python virtual environment (241 MB — never commit)
+/sketch-matcher-pi/.venv/
+.venv/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Runtime/generated artifacts (large datasets, models, logs)
+/sketch-matcher-pi/data/
+/sketch-matcher-pi/models/
+/sketch-matcher-pi/logs/
+/sketch-matcher-pi/src.zip
+*.zip
+
+# Notebook/checkpoint metadata
+.ipynb_checkpoints/
+
+# Root-level loose files (not part of the repo)
+SESSION_NOTES.md
+pi_deploy.zip
+"pi_deploy (1).zip"
+sketch-matcher-pi/../SESSION_NOTES.md
+softcomputing model chat.md
+sketch_matcher_colab_gemini.ipynb

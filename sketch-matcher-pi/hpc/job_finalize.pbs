@@ -1,0 +1,28 @@
+#!/bin/bash
+#PBS -N sketch_finalize
+#PBS -q cpuq
+#PBS -l select=1:ncpus=16
+#PBS -l walltime=04:00:00
+#PBS -j oe
+#PBS -o finalize.log
+
+# CPU-ONLY queue job: evaluate the trained model, export TFLite + photo
+# embeddings, and package the Pi deployment. Runs AFTER job_train.pbs finishes.
+# (Eval/export don't need a GPU, so they go in cpuq to keep workq GPU-busy.)
+#
+#   cd /Data/<username>/sketch_matcher && qsub hpc/job_finalize.pbs
+
+cd "$PBS_O_WORKDIR"
+
+source /apps/compilers/anaconda3/etc/profile.d/conda.sh
+conda activate sketch_matcher
+export PYTHONNOUSERSITE=1
+TF_PYTHON="$CONDA_PREFIX/bin/python"
+echo "Using python: $TF_PYTHON"
+
+# Copy big model files to /Data so they survive the 15-day home-dir purge:
+mkdir -p /Data/"$USER"/sketch_matcher/models
+cp -u models/best_model.keras models/final_model.keras models/teacher_model.keras /Data/"$USER"/sketch_matcher/models/ 2>/dev/null || true
+
+$TF_PYTHON src/evaluate.py
+$TF_PYTHON src/export_tflite.py
