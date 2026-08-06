@@ -20,6 +20,8 @@ Usage:
     python src/train.py
 """
 
+import argparse
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -40,7 +42,7 @@ try:
         BEST_MODEL_PATH, FINAL_MODEL_PATH, TEACHER_MODEL_PATH, CHECKPOINT_DIR,
         TENSORBOARD_LOG_DIR, LOGS_DIR, PROCESSED_DIR, LOG_LEVEL,
         PAIRS_PER_EPOCH, BACKBONE, TEACHER_BACKBONE, UNFREEZE_FROM_STAGE2,
-        EMBEDDING_DIM, LOSS_TYPE, ENABLE_DISTILLATION,
+        EMBEDDING_DIM, LOSS_TYPE, ENABLE_DISTILLATION, USE_ARC_FACE,
     )
 except ModuleNotFoundError:  # Colab
     from src.config import (
@@ -51,7 +53,7 @@ except ModuleNotFoundError:  # Colab
         BEST_MODEL_PATH, FINAL_MODEL_PATH, TEACHER_MODEL_PATH, CHECKPOINT_DIR,
         TENSORBOARD_LOG_DIR, LOGS_DIR, PROCESSED_DIR, LOG_LEVEL,
         PAIRS_PER_EPOCH, BACKBONE, TEACHER_BACKBONE, UNFREEZE_FROM_STAGE2,
-        EMBEDDING_DIM, LOSS_TYPE, ENABLE_DISTILLATION,
+        EMBEDDING_DIM, LOSS_TYPE, ENABLE_DISTILLATION, USE_ARC_FACE,
     )
 
 from model import (
@@ -75,16 +77,21 @@ log = logging.getLogger(__name__)
 
 def get_callbacks(stage_name, stage_dir):
     stage_dir.mkdir(parents=True, exist_ok=True)
-    return [
+    callbacks = [
         EarlyStopping(monitor="val_loss", patience=EARLY_STOPPING_PATIENCE,
                       restore_best_weights=True, verbose=1),
         ReduceLROnPlateau(monitor="val_loss", factor=REDUCE_LR_FACTOR,
                           patience=REDUCE_LR_PATIENCE, min_lr=1e-8, verbose=1),
         ModelCheckpoint(str(stage_dir / "best_epoch.keras"),
                         monitor="val_loss", save_best_only=True, verbose=1),
-        TensorBoard(log_dir=str(TENSORBOARD_LOG_DIR / stage_name)),
         CSVLogger(str(LOGS_DIR / f"{stage_name}_history.csv")),
     ]
+    if importlib.util.find_spec("tensorboard") is not None:
+        callbacks.append(
+            TensorBoard(log_dir=str(TENSORBOARD_LOG_DIR / stage_name)))
+    else:
+        log.warning("tensorboard not installed; skipping TensorBoard callback")
+    return callbacks
 
 
 def train_stage(siamese, embedding_net, backbone, train_gen, val_gen,
@@ -114,13 +121,14 @@ def train_stage(siamese, embedding_net, backbone, train_gen, val_gen,
 
 
 def make_generators(batch_size, augment=False, teacher_sketch_embs=None,
-                    teacher_photo_embs=None):
+                    teacher_photo_embs=None, arcface=USE_ARC_FACE):
     """Create train/val/test generators for one stage."""
     train_gen, val_gen, test_gen, names = create_data_generators(
         batch_size=batch_size, pairs_per_epoch=PAIRS_PER_EPOCH,
         augment=augment,
         teacher_sketch_embs=teacher_sketch_embs,
         teacher_photo_embs=teacher_photo_embs,
+        arcface=arcface,
     )
     return train_gen, val_gen, test_gen, names
 
@@ -175,9 +183,28 @@ def compute_teacher_embeddings(teacher_net, batch_size=128, force=False):
     return t_sk, t_ph
 
 
+def _load_teacher_embeddings():
+    sk_path = PROCESSED_DIR / "teacher_sketch_embs.npy"
+    ph_path = PROCESSED_DIR / "teacher_photo_embs.npy"
+    if not (sk_path.exists() and ph_path.exists()):
+        log.error("Teacher embeddings not found! Run: python src/train.py --phase teacher")
+        sys.exit(1)
+    log.info("Loading cached teacher embeddings...")
+    return np.load(sk_path), np.load(ph_path)
+
+
 def main():
+    parser = argparse.ArgumentParser(description="Sketch Matcher training")
+    parser.add_argument("--phase", choices=["teacher", "student", "all"],
+                        default="all",
+                        help="teacher: train teacher + cache embeddings; "
+                             "student: train student from cached teacher "
+                             "embeddings; all: run both (default)")
+    args = parser.parse_args()
+
     log.info("=" * 60)
     log.info("Sketch Matcher - Training Pipeline")
+    log.info(f"Phase: {args.phase}")
     log.info("=" * 60)
 
     gpus = tf.config.list_physical_devices("GPU")
@@ -193,6 +220,9 @@ def main():
         sys.exit(1)
 
     log.info(f"\nLoss: {LOSS_TYPE}  |  Distillation: {ENABLE_DISTILLATION}")
+
+    siamese = None
+    t_sk = t_ph = None
 
     if not ENABLE_DISTILLATION:
         # ---------------- Single-model training ----------------
@@ -212,48 +242,56 @@ def main():
         log.info(f"  Embedding: {BEST_MODEL_PATH}")
 
     else:
-        # ---------------- Phase A: teacher ----------------
-        log.info("\n[1/4] Training TEACHER...")
-        teacher_siamese, teacher_net, teacher_base = create_model(
-            backbone_name=TEACHER_BACKBONE, loss_type=LOSS_TYPE,
-            include_embeddings=False, embedding_dim=EMBEDDING_DIM)
-        count_trainable_params(teacher_siamese)
+        if args.phase in ("teacher", "all"):
+            # ---------------- Phase A: teacher ----------------
+            log.info("\n[1/4] Training TEACHER...")
+            teacher_siamese, teacher_net, teacher_base = create_model(
+                backbone_name=TEACHER_BACKBONE, loss_type=LOSS_TYPE,
+                include_embeddings=False, embedding_dim=EMBEDDING_DIM)
+            count_trainable_params(teacher_siamese)
 
-        run_three_stages(teacher_siamese, teacher_net, teacher_base, "teacher",
-                         augment=True)
+            run_three_stages(teacher_siamese, teacher_net, teacher_base,
+                             "teacher", augment=True)
 
-        teacher_net.save(TEACHER_MODEL_PATH)
-        log.info(f"  Teacher embedding saved: {TEACHER_MODEL_PATH}")
+            teacher_net.save(TEACHER_MODEL_PATH)
+            log.info(f"  Teacher embedding saved: {TEACHER_MODEL_PATH}")
 
-        # Compute + cache teacher embeddings for all processed images
-        t_sk, t_ph = compute_teacher_embeddings(teacher_net)
+            # Compute + cache teacher embeddings for all processed images
+            t_sk, t_ph = compute_teacher_embeddings(teacher_net)
+        else:
+            t_sk, t_ph = _load_teacher_embeddings()
 
-        # ---------------- Phase B: student with distillation ----------------
-        log.info(f"\n[2/4] Training STUDENT ({BACKBONE}) with distillation...")
-        siamese, embedding_net, backbone = create_model(
-            backbone_name=BACKBONE, loss_type=LOSS_TYPE,
-            include_embeddings=True, embedding_dim=EMBEDDING_DIM)
-        count_trainable_params(siamese)
+        if args.phase in ("student", "all"):
+            # ---------------- Phase B: student with distillation ----------------
+            log.info(f"\n[2/4] Training STUDENT ({BACKBONE}) with distillation...")
+            siamese, embedding_net, backbone = create_model(
+                backbone_name=BACKBONE, loss_type=LOSS_TYPE,
+                include_embeddings=True, embedding_dim=EMBEDDING_DIM)
+            count_trainable_params(siamese)
 
-        run_three_stages(siamese, embedding_net, backbone, "student",
-                         teacher_sketch_embs=t_sk, teacher_photo_embs=t_ph,
-                         augment=False)
+            run_three_stages(siamese, embedding_net, backbone, "student",
+                             teacher_sketch_embs=t_sk, teacher_photo_embs=t_ph,
+                             augment=False)
 
-        log.info("\n[3/4] Saving student model...")
-        siamese.save(FINAL_MODEL_PATH)
-        embedding_net.save(BEST_MODEL_PATH)
-        log.info(f"  Siamese: {FINAL_MODEL_PATH}")
-        log.info(f"  Embedding: {BEST_MODEL_PATH}")
+            log.info("\n[3/4] Saving student model...")
+            siamese.save(FINAL_MODEL_PATH)
+            embedding_net.save(BEST_MODEL_PATH)
+            log.info(f"  Siamese: {FINAL_MODEL_PATH}")
+            log.info(f"  Embedding: {BEST_MODEL_PATH}")
 
-    # ---------------- Sanity check ----------------
-    log.info("\n[4/4] Quick validation check...")
-    _, val_gen, _, _ = make_generators(64)
-    siamese.evaluate(val_gen, steps=50, verbose=1)
+    if siamese is not None:
+        # ---------------- Sanity check ----------------
+        log.info("\n[4/4] Quick validation check...")
+        _, val_gen, _, _ = make_generators(64)
+        siamese.evaluate(val_gen, steps=50, verbose=1)
 
     log.info("\n" + "=" * 60)
     log.info("Training complete!")
-    log.info("  1. Evaluate: python src/evaluate.py")
-    log.info("  2. Export TFLite: python src/export_tflite.py")
+    if args.phase == "teacher":
+        log.info("  Next: qsub hpc/job_train_student.pbs")
+    else:
+        log.info("  1. Evaluate: python src/evaluate.py")
+        log.info("  2. Export TFLite: python src/export_tflite.py")
     log.info("=" * 60)
 
 

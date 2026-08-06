@@ -1,0 +1,47 @@
+#!/bin/bash
+#PBS -N sketch_arc_smoke
+#PBS -q workq
+#PBS -l select=1:ncpus=2:ngpus=1:mem=8gb
+#PBS -l walltime=01:00:00
+#PBS -j oe
+#PBS -o arcface_smoke.log
+
+cd "$PBS_O_WORKDIR"
+
+# --- Conda env ---
+source /apps/compilers/anaconda3/etc/profile.d/conda.sh
+conda activate sketch_matcher
+export PYTHONNOUSERSITE=1
+# Use the CUDA 13.0 ptxas (supports CC 9.0 / H100) -- the system default is
+# CUDA 11.8 which cannot compile for sm_90a ("ptxas too old").
+export PATH="/usr/local/cuda-13.0/bin:$PATH"
+# Same Triton-GEMM + autotuner-level workaround as the real training jobs
+# (tests the flags). autotune_level=0 makes XLA skip the config autotuner that
+# shells out to the CUDA 11.8 ptxas (no CC 9.0 support) and use driver-JIT
+# kernels instead.
+export XLA_FLAGS="--xla_gpu_enable_triton_gemm=false --xla_gpu_autotune_level=0"
+TF_PYTHON="$CONDA_PREFIX/bin/python"
+echo "Using python: $TF_PYTHON"
+
+# --- pick a free FULL (MIG-Disabled) H100 by GPU UUID ---
+pick_full() {
+  while IFS= read -r line; do
+    local IDX UUID USED_MEM
+    IDX=$(printf '%s\n' "$line" | cut -d',' -f1 | tr -d ' ')
+    UUID=$(nvidia-smi --query-gpu=uuid --format=csv,noheader -i "$IDX" 2>/dev/null | tr -d '\r' | head -1)
+    USED_MEM=$(nvidia-smi --query-compute-apps=gpu_index,used_gpu_memory --format=csv,noheader 2>/dev/null \
+      | awk -v i="$IDX" -F', ' '$1==i {gsub(/MiB/,"",$2); s+=$2} END {print s+0}')
+    if [ -z "$USED_MEM" ] || [ "$USED_MEM" -lt 4096 ]; then echo "$UUID"; return; fi
+  done < <(nvidia-smi --query-gpu=index,mig.mode.current --format=csv,noheader 2>/dev/null | grep -i disabled)
+}
+U=$(pick_full)
+echo "SMOKE picked full H100 UUID: ${U:-NONE}"
+if [ -z "$U" ]; then
+  echo "SMOKE FAIL: no free full H100"; exit 1
+fi
+export CUDA_VISIBLE_DEVICES="$U"
+echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+nvidia-smi -L
+nvidia-smi --query-gpu=index,name,mig.mode.current,memory.used --format=csv
+
+$TF_PYTHON hpc/arcface_smoke.py

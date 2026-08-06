@@ -1,7 +1,7 @@
 # HPC Runbook - NITJ H100 cluster (workq/cpuq)
 
-All commands run on the HPC unless marked [LAPTOP]. Replace `<username>` with
-your NITJ HPC username.
+All commands run on the HPC unless marked [LAPTOP]. Username: `ee_24126016`
+(account expires 2026-08-21 — 15-day window, so upload data ONCE to /Data).
 
 ## 0. Local validation (before any submission)
 [LAPTOP] Project must compile locally first (already verified):
@@ -10,36 +10,41 @@ your NITJ HPC username.
     python -m py_compile src/*.py
 
 ## 1. First login + environment setup (once)
-    ssh <username>@10.10.11.201
-    mkdir -p /Data/<username>/sketch_matcher
+    ssh ee_24126016@10.10.11.201
+    mkdir -p /Data/ee_24126016/sketch_matcher
     cd ~
     conda create -n sketch_matcher python=3.10 -y
     conda activate sketch_matcher
     pip install "tensorflow[and-cuda]"
     pip install opencv-python-headless tqdm requests scikit-learn
 
-Kaggle credentials (needed only if downloading datasets on the HPC):
+Kaggle credentials (REQUIRED — datasets download on the HPC, not locally):
 
     mkdir -p ~/.kaggle
-    # upload kaggle.json to ~/.kaggle/kaggle.json via scp/WinSCP
+    # upload kaggle.json to ~/.kaggle/kaggle.json via WinSCP/scp
+    # (get token at https://www.kaggle.com/settings -> API -> Create New Token)
 
 ## 2. Upload the project (once)
 [LAPTOP]
 
-    scp -r sketch-matcher-pi <username>@10.10.11.201:/Data/<username>/sketch_matcher/
+    scp -r sketch-matcher-pi ee_24126016@10.10.11.201:/Data/ee_24126016/sketch_matcher/
 
-Run from /Data/<username>/sketch_matcher (NOT home; home is purged after 15 days).
+Run from /Data/ee_24126016/sketch_matcher (NOT home; home is purged after 15 days).
 
 ## 3. Submit jobs IN ORDER
 
-    ssh <username>@10.10.11.201
-    cd /Data/<username>/sketch_matcher
+    ssh ee_24126016@10.10.11.201
+    cd /Data/ee_24126016/sketch_matcher
+
+Step 0 - GPU sanity test FIRST (workq, ~2 min). Validates TF + H100 MIG slice
+         before the long run. cat gpu_test.log and check "PASSED":
+    qsub hpc/job_gpu_test.pbs
 
 Step A - download + preprocess (cpuq, max 16 cores):
     qsub hpc/job_preprocess.pbs
 
 Step B - wait, then train (workq, GPU; holds the H100 the whole run):
-    qstat -u <username>      # Q = queued, R = running, E = finished
+    qstat -u ee_24126016      # Q = queued, R = running, E = finished
     qsub hpc/job_train.pbs
 
 Step C - wait, then evaluate + export TFLite (cpuq, no GPU needed):
@@ -47,7 +52,7 @@ Step C - wait, then evaluate + export TFLite (cpuq, no GPU needed):
 
 Debugging:
     tracejob <JobID>
-    cat preprocess.log / train.log / finalize.log
+    cat gpu_test.log / preprocess.log / train.log / finalize.log
 
 ## 4. OOM on a small MIG slice
     nvidia-smi -L              # see which MIG device you got

@@ -10,7 +10,7 @@
 # embeddings, and package the Pi deployment. Runs AFTER job_train.pbs finishes.
 # (Eval/export don't need a GPU, so they go in cpuq to keep workq GPU-busy.)
 #
-#   cd /Data/<username>/sketch_matcher && qsub hpc/job_finalize.pbs
+#   cd /Data/ee_24126016/sketch_matcher && qsub hpc/job_finalize.pbs
 
 cd "$PBS_O_WORKDIR"
 

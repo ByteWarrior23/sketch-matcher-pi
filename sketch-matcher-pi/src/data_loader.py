@@ -29,9 +29,11 @@ import numpy as np
 from tensorflow.keras.utils import Sequence
 
 try:
-    from config import PROCESSED_DIR, HARD_NEGATIVE_RATIO, CONFUSABLE_PAIRS, IMG_SIZE
+    from config import (PROCESSED_DIR, HARD_NEGATIVE_RATIO, CONFUSABLE_PAIRS,
+                        IMG_SIZE, USE_ARC_FACE)
 except ModuleNotFoundError:  # Colab: imported as src.data_loader
-    from src.config import PROCESSED_DIR, HARD_NEGATIVE_RATIO, CONFUSABLE_PAIRS, IMG_SIZE
+    from src.config import (PROCESSED_DIR, HARD_NEGATIVE_RATIO, CONFUSABLE_PAIRS,
+                            IMG_SIZE, USE_ARC_FACE)
 
 import cv2
 
@@ -94,10 +96,15 @@ class SketchPhotoPairGenerator(Sequence):
     """
     Yields (inputs, outputs).
 
-      inputs : [sketch_batch (B,224,224,3), photo_batch (B,224,224,3)]
+      inputs :
+        standard:            [sketch_batch (B,224,224,3), photo_batch (B,224,224,3)]
+        arcface mode:        [..., sk_cat_batch (B,), ph_cat_batch (B,)]
       outputs:
         standard:                label_batch (B,1)              (0=match, 1=no match)
         distillation mode:       [label_batch, teacher_sk, teacher_ph]
+        arcface mode adds:       [..., sk_cat_batch (B,), ph_cat_batch (B,)]
+          (category ids serve as BOTH the ArcFace head's forward-pass inputs
+          and the sparse-CE targets, per the standard Keras ArcFace pattern)
 
     sketch_labels / photo_labels: category index (int) per image.
     """
@@ -106,10 +113,18 @@ class SketchPhotoPairGenerator(Sequence):
                  category_names, batch_size=32, pairs_per_epoch=10000,
                  shuffle=True, augment=False, teacher_sketch_embs=None,
                  teacher_photo_embs=None, hard_negative_ratio=0.0,
-                 confusable_pairs=None):
+                 confusable_pairs=None, sk_global=None, ph_global=None,
+                 arcface=False):
         super().__init__()
+        # Full arrays are passed as MEMORY-MAPPED reads (mmap_mode='r') so no
+        # 100+ GB slice is ever materialized in RAM (workq mem cap is 32 GB).
+        # sk_global/ph_global map LOCAL (sliced) row index -> GLOBAL row index.
         self.sketches = sketches
         self.photos = photos
+        self.sk_global = (np.arange(len(sketch_labels)) if sk_global is None
+                          else np.asarray(sk_global, dtype=np.int64))
+        self.ph_global = (np.arange(len(photo_labels)) if ph_global is None
+                          else np.asarray(ph_global, dtype=np.int64))
         self.sk_labels = np.asarray(sketch_labels, dtype=np.int64)
         self.ph_labels = np.asarray(photo_labels, dtype=np.int64)
         self.category_names = category_names  # {idx: name}
@@ -124,6 +139,7 @@ class SketchPhotoPairGenerator(Sequence):
         self.distill = (teacher_sketch_embs is not None
                         and teacher_photo_embs is not None)
 
+        self.arcface = arcface
         self.hard_negative_ratio = hard_negative_ratio
 
         self.sk_cat_map = self._build_index(self.sk_labels)
@@ -192,6 +208,8 @@ class SketchPhotoPairGenerator(Sequence):
             emb_dim = self.teacher_sketch_embs.shape[1]
             t_sk = np.empty((n, emb_dim), dtype=np.float32)
             t_ph = np.empty((n, emb_dim), dtype=np.float32)
+        sk_cats = np.zeros((n,), dtype=np.int64)
+        ph_cats = np.zeros((n,), dtype=np.int64)
 
         k = 0
 
@@ -200,9 +218,11 @@ class SketchPhotoPairGenerator(Sequence):
             cat = random.choice(self.valid_cats)
             si = random.choice(self.sk_cat_map[cat])
             pi = random.choice(self.ph_cat_map[cat])
-            batch_sk[k] = self._aug_sketch(self.sketches[si])
-            batch_ph[k] = self._aug_photo(self.photos[pi])
+            batch_sk[k] = self._aug_sketch(self.sketches[self.sk_global[si]])
+            batch_ph[k] = self._aug_photo(self.photos[self.ph_global[pi]])
             labels[k] = 0.0
+            sk_cats[k] = cat
+            ph_cats[k] = cat
             if self.distill:
                 t_sk[k] = self.teacher_sketch_embs[si]
                 t_ph[k] = self.teacher_photo_embs[pi]
@@ -216,9 +236,11 @@ class SketchPhotoPairGenerator(Sequence):
                 continue
             si = random.choice(self.sk_cat_map[cat_a])
             pi = random.choice(self.ph_cat_map[cat_b])
-            batch_sk[k] = self._aug_sketch(self.sketches[si])
-            batch_ph[k] = self._aug_photo(self.photos[pi])
+            batch_sk[k] = self._aug_sketch(self.sketches[self.sk_global[si]])
+            batch_ph[k] = self._aug_photo(self.photos[self.ph_global[pi]])
             labels[k] = 1.0
+            sk_cats[k] = cat_a
+            ph_cats[k] = cat_b
             if self.distill:
                 t_sk[k] = self.teacher_sketch_embs[si]
                 t_ph[k] = self.teacher_photo_embs[pi]
@@ -228,13 +250,24 @@ class SketchPhotoPairGenerator(Sequence):
             batch_sk = batch_sk[:k]
             batch_ph = batch_ph[:k]
             labels = labels[:k]
+            sk_cats = sk_cats[:k]
+            ph_cats = ph_cats[:k]
             if self.distill:
                 t_sk = t_sk[:k]
                 t_ph = t_ph[:k]
 
+        inputs = (batch_sk, batch_ph)
+        if self.arcface:
+            inputs = (batch_sk, batch_ph, sk_cats, ph_cats)
+
         if self.distill:
-            return (batch_sk, batch_ph), (labels, t_sk, t_ph)
-        return (batch_sk, batch_ph), labels
+            outputs = (labels, t_sk, t_ph)
+            if self.arcface:
+                outputs = (labels, t_sk, t_ph, sk_cats, ph_cats)
+            return inputs, outputs
+        if self.arcface:
+            return inputs, (labels, sk_cats, ph_cats)
+        return inputs, labels
 
     def on_epoch_end(self):
         if self.shuffle:
@@ -245,8 +278,11 @@ class SketchPhotoPairGenerator(Sequence):
 # LOADING + SPLIT MASKS
 # =============================================================================
 def load_processed_data():
-    sketches = np.load(PROCESSED_DIR / "sketches.npy").astype(np.float32)
-    photos = np.load(PROCESSED_DIR / "photos.npy").astype(np.float32)
+    # Memory-mapped reads: the float32 arrays are 66 GB (sketches) + 44 GB
+    # (photos). mmap keeps RSS tiny (workq caps requestable mem at 32 GB);
+    # pages are cached by the OS and read per-row in the generator.
+    sketches = np.load(PROCESSED_DIR / "sketches.npy", mmap_mode="r")
+    photos = np.load(PROCESSED_DIR / "photos.npy", mmap_mode="r")
     sketch_labels = np.load(PROCESSED_DIR / "sketch_labels.npy")
     photo_labels = np.load(PROCESSED_DIR / "photo_labels.npy")
 
@@ -293,7 +329,8 @@ def get_split_masks(sketch_labels, photo_labels, metadata, category_names=None):
 def create_data_generators(batch_size=32, pairs_per_epoch=50000, augment=False,
                            teacher_sketch_embs=None, teacher_photo_embs=None,
                            hard_negative_ratio=HARD_NEGATIVE_RATIO,
-                           confusable_pairs=CONFUSABLE_PAIRS):
+                           confusable_pairs=CONFUSABLE_PAIRS,
+                           arcface=USE_ARC_FACE):
     """
     Build train/val/test pair generators.
 
@@ -303,6 +340,7 @@ def create_data_generators(batch_size=32, pairs_per_epoch=50000, augment=False,
       teacher_sketch_embs/teacher_photo_embs: (N, EMB) arrays aligned with the
         FULL processed arrays; rows are sub-sliced by the split masks.
       hard_negative_ratio, confusable_pairs: hard-negative mining config
+      arcface: emit category labels (extra model inputs + CE targets)
     """
     (sketches, photos, sketch_labels, photo_labels,
      category_names, metadata) = load_processed_data()
@@ -312,9 +350,14 @@ def create_data_generators(batch_size=32, pairs_per_epoch=50000, augment=False,
     def _slice(embs, mask):
         return None if embs is None else embs[mask]
 
+    def _global(mask):
+        # LOCAL (masked) row index -> GLOBAL row index into the full memmapped
+        # array, so the generator never materializes the masked slice.
+        return np.where(mask)[0]
+
     def _make(sk_mask, ph_mask, ppb, aug, ratio, conf):
         return SketchPhotoPairGenerator(
-            sketches[sk_mask], photos[ph_mask],
+            sketches, photos,
             sketch_labels[sk_mask], photo_labels[ph_mask],
             category_names,
             batch_size=batch_size, pairs_per_epoch=ppb,
@@ -322,6 +365,8 @@ def create_data_generators(batch_size=32, pairs_per_epoch=50000, augment=False,
             teacher_sketch_embs=_slice(teacher_sketch_embs, sk_mask),
             teacher_photo_embs=_slice(teacher_photo_embs, ph_mask),
             hard_negative_ratio=ratio, confusable_pairs=conf,
+            sk_global=_global(sk_mask), ph_global=_global(ph_mask),
+            arcface=arcface,
         )
 
     train_gen = _make(m["tr_sk"], m["tr_ph"], pairs_per_epoch, augment,

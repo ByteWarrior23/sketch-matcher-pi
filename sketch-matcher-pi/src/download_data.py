@@ -18,7 +18,11 @@ log = logging.getLogger(__name__)
 
 
 # Alternative Kaggle dataset slugs (tried in order if one fails)
-SKETCHY_SLUGS = ["balraj98/sketchydataset", "sharanyasundar/sketchy-dataset"]
+# balraj98 -> original, currently 403/consent-gated; raajanwankhade ->
+# full mirror (125 cats, ~75.5k sketches / ~73k photos) verified working.
+SKETCHY_SLUGS = ["balraj98/sketchydataset",
+                 "raajanwankhade/sketchy-dataset",
+                 "sharanyasundar/sketchy-dataset"]
 TUBERLIN_SLUGS = ["borismokeev/tuberlin-sketch-dataset",
                   "zara2099/tu-berlin-hand-sketch-image-dataset"]
 IMAGENETSKETCH_SLUGS = ["wanghaohan/imagenetsketch"]

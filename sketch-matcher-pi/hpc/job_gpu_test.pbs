@@ -1,0 +1,36 @@
+#!/bin/bash
+#PBS -N sketch_gpu_test
+#PBS -q workq
+#PBS -l select=1:ncpus=16:ngpus=1
+#PBS -l walltime=00:15:00
+#PBS -j oe
+#PBS -o gpu_test.log
+
+# Quick (~2 min) sanity check that TF sees the H100 MIG slice BEFORE the
+# 5-day training job. Run FIRST, from the project root:
+#   cd /Data/ee_24126016/sketch_matcher && qsub hpc/job_gpu_test.pbs
+# Then: cat gpu_test.log  ->  expect "Visible GPU count: 1" + TFLOP/s line.
+
+cd "$PBS_O_WORKDIR"
+
+source /apps/compilers/anaconda3/etc/profile.d/conda.sh
+conda activate sketch_matcher
+export PYTHONNOUSERSITE=1
+TF_PYTHON="$CONDA_PREFIX/bin/python"
+echo "Using python: $TF_PYTHON"
+
+# Pick a free MIG UUID (1 GPU per user, per HPC manual). Pin one manually by
+# uncommenting with the UUID from: nvidia-smi -L
+if [ -z "$CUDA_VISIBLE_DEVICES" ]; then
+  USED=$(nvidia-smi --query-compute-apps=gpu_uuid --format=csv,noheader 2>/dev/null | sort -u)
+  for u in $(nvidia-smi -L 2>/dev/null | grep MIG | sed 's/.*(UUID: //; s/)//'); do
+    if ! printf '%s\n' "$USED" | grep -q "$u"; then
+      export CUDA_VISIBLE_DEVICES="$u"
+      break
+    fi
+  done
+fi
+echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+nvidia-smi -L
+
+$TF_PYTHON hpc/tf_gpu_test.py

@@ -2,20 +2,22 @@
 #PBS -N sketch_train
 #PBS -q workq
 #PBS -l select=1:ncpus=32:ngpus=1
-#PBS -l walltime=120:00:00
+#PBS -l walltime=48:00:00
 #PBS -j oe
 #PBS -o train.log
 
 # GPU-ONLY queue job: teacher + student distillation training.
-# walltime=120h (5 days): teacher (ConvNeXtTiny) alone can take ~24-48h,
-# student adds ~8-24h, so 24h walltime would get the job killed mid-run.
-# If the cluster caps walltime lower, split training into teacher/student
-# jobs instead (ask admin). TODO: check max allowed walltime on workq.
+# workq walltime cap is 48h, so the full run is SPLIT into two jobs:
+#   qsub hpc/job_train_teacher.pbs   (teacher + embedding cache)
+#   qsub hpc/job_train_student.pbs   (student distillation)
+# This file runs BOTH phases in one 48h job -- only use if the teacher phase
+# is known to fit the walltime (otherwise the job dies before the student
+# phase and everything is lost).
 # NOTE: workq kills CPU-only jobs (audit script) -- keep preprocess/eval/export
 # in cpuq jobs. This job runs ONLY src/train.py (holds the GPU the whole time).
 #
 # Run from the project root on the HPC:
-#   cd /Data/<username>/sketch_matcher && qsub hpc/job_train.pbs
+#   cd /Data/ee_24126016/sketch_matcher && qsub hpc/job_train.pbs
 
 cd "$PBS_O_WORKDIR"
 

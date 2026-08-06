@@ -55,7 +55,10 @@ DATASETS = {
 # Sketchy's canonical categories by name (see class_mapping.py).
 USE_QUICKDRAW = True
 USE_TUBERLIN = True
-USE_IMAGENETSKETCH = True
+# ImageNet-Sketch ships with synset folder names (n02342885) and no mapping
+# file in the Kaggle mirror, so category names cannot be mapped to Sketchy's
+# canonical set. Enable only if a synset -> name file is provided.
+USE_IMAGENETSKETCH = False
 # Per-category caps keep total RAM sane: ~0.15 MB per 224x224x3 uint8 image.
 # User trains on a machine with a 96 GB VRAM GPU -> caps are set HIGH for
 # maximum data diversity:
@@ -81,14 +84,32 @@ NORMALIZE_STD = [0.229, 0.224, 0.225]    # ImageNet std (for transfer learning)
 # MODEL ARCHITECTURE
 # =============================================================================
 # Backbone options (all pretrained on ImageNet, all TFLite-convertible):
-#   "mobilenetv2"     -> 3.5M params, ~150ms on Pi 5 (STUDENT - ships to Pi)
-#   "efficientnetv2s" -> 21M params, high accuracy (TEACHER)
-#   "convnexttiny"    -> 28M params, top accuracy (TEACHER)
-BACKBONE = "mobilenetv2"
+#   "mobilenetv2"      -> 3.5M params, ~150ms on Pi 5 (older STUDENT option)
+#   "mobilenetv3large" -> 5.4M params, ~100-150ms on Pi 5 (STUDENT - ships to
+#                         Pi; better accuracy than V2 at similar FLOPs and has
+#                         a built-in [-1,1] rescale, so [0,1] inputs are fed
+#                         correctly)
+#   "efficientnetv2s"  -> 21M params, high accuracy (TEACHER)
+#   "convnexttiny"     -> 28M params, top accuracy (TEACHER)
+BACKBONE = "mobilenetv3large"
 TEACHER_BACKBONE = "convnexttiny"   # teacher for distillation (not deployed)
 EMBEDDING_DIM = 256          # 128 = light, 256 = balanced, 512 = max capacity
 DROPOUT_RATE = 0.3
 USE_PRETRAINED = True        # Start from ImageNet weights
+
+# =============================================================================
+# ARC FACE HEAD (additive angular margin classifier)
+# =============================================================================
+# Adds a classification head on the L2-normed embedding (Deng et al. 2019).
+# ArcFace is a proven accuracy booster for embedding retrieval (the sketch and
+# photo branches each get a shared classifier). The embedding stays
+# L2-normalized for retrieval, so TFLite export is unaffected.
+# Generator yields category labels as extra model inputs AND CE targets.
+USE_ARC_FACE = True
+ARC_FACE_MARGIN = 0.5         # additive angular margin (radians)
+ARC_FACE_SCALE = 64.0         # logit scale s
+ARC_FACE_LAMBDA = 0.5         # CE loss weight per branch (pair loss weight = 1.0)
+NUM_CLASSES = 125             # must match preprocessed category count
 
 # Knowledge distillation (teacher -> student for the Pi)
 # If False, the BACKBONE model is trained directly (no distillation).

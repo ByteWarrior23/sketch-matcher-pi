@@ -9,7 +9,10 @@ Architecture:
   Input B (photo) ──┘
 
 Supported backbones (all ImageNet-pretrained, all TFLite-convertible):
-  - "mobilenetv2"    3.5M params  ~150ms on Pi 5   (STUDENT, ships to Pi)
+  - "mobilenetv2"     3.5M params  ~150ms on Pi 5 (older STUDENT option)
+  - "mobilenetv3large" 5.4M params ~100-150ms on Pi 5 (STUDENT, ships to Pi;
+                 better accuracy than V2 at similar/smaller FLOPs, has a
+                 built-in [-1,1] rescale so [0,1] inputs are fed correctly)
   - "efficientnetv2s" 21M params  high accuracy    (TEACHER)
   - "convnexttiny"   28M params  top accuracy      (TEACHER)
 
@@ -17,6 +20,10 @@ Losses:
   - contrastive (distance-based)
   - circle      (Sun et al. 2020, SOTA metric loss; operates on cosine sim
                  derived from the L2-normalized embedding distance)
+  - arcface head (Deng et al. 2019, additive angular margin classifier on the
+                 L2-normed embedding). When USE_ARC_FACE is on, each branch
+                 also produces category logits trained with sparse CE; the
+                 embedding stays L2-normed for retrieval.
 
 Distillation: build_distilled_siamese_model() returns a 3-output model
 [distance, emb_a, emb_b]. With teacher embeddings as extra y-targets the
@@ -38,14 +45,16 @@ try:
         IMG_SIZE, IMG_CHANNELS, EMBEDDING_DIM, DROPOUT_RATE,
         CONTRASTIVE_MARGIN, CIRCLE_M, CIRCLE_GAMMA, USE_PRETRAINED,
         BACKBONE, TEACHER_BACKBONE, LOSS_TYPE, DISTILL_ALPHA,
-        LOG_LEVEL,
+        USE_ARC_FACE, ARC_FACE_MARGIN, ARC_FACE_SCALE, ARC_FACE_LAMBDA,
+        NUM_CLASSES, LOG_LEVEL,
     )
 except ModuleNotFoundError:  # Colab: imported as src.model
     from src.config import (
         IMG_SIZE, IMG_CHANNELS, EMBEDDING_DIM, DROPOUT_RATE,
         CONTRASTIVE_MARGIN, CIRCLE_M, CIRCLE_GAMMA, USE_PRETRAINED,
         BACKBONE, TEACHER_BACKBONE, LOSS_TYPE, DISTILL_ALPHA,
-        LOG_LEVEL,
+        USE_ARC_FACE, ARC_FACE_MARGIN, ARC_FACE_SCALE, ARC_FACE_LAMBDA,
+        NUM_CLASSES, LOG_LEVEL,
     )
 
 import logging
@@ -55,6 +64,7 @@ log = logging.getLogger(__name__)
 
 BACKBONE_BUILDERS = {
     "mobilenetv2": tf.keras.applications.MobileNetV2,
+    "mobilenetv3large": tf.keras.applications.MobileNetV3Large,
     "efficientnetv2s": tf.keras.applications.EfficientNetV2S,
     "convnexttiny": tf.keras.applications.ConvNeXtTiny,
 }
@@ -191,8 +201,65 @@ class DistanceLayer(layers.Layer):
             tf.square(embedding_a - embedding_b), axis=1, keepdims=True))
 
 
+@tf.keras.utils.register_keras_serializable()
+class ArcFaceLayer(layers.Layer):
+    """
+    Additive Angular Margin (ArcFace) classifier on an L2-normalized embedding.
+
+    call([embedding (B, D), labels (B,)]) -> cosine logits (B, C) with the
+    additive margin m applied to the target logit and the whole thing scaled
+    by s. Trained with SparseCategoricalCrossentropy(from_logits=True).
+
+    The labels come in TWICE: once as this layer's input (needed during the
+    forward pass to apply the margin) and again as the CE target from the
+    generator (standard Keras ArcFace pattern).
+    """
+
+    def __init__(self, num_classes, margin=0.5, scale=64.0, **kwargs):
+        super().__init__(**kwargs)
+        self.num_classes = int(num_classes)
+        self.margin = float(margin)
+        self.scale = float(scale)
+
+    def build(self, input_shapes):
+        embedding_dim = input_shapes[0][-1]
+        self.w = self.add_weight(
+            name="arcface_w",
+            shape=(embedding_dim, self.num_classes),
+            initializer=tf.keras.initializers.GlorotUniform(),
+            trainable=True,
+        )
+        self.built = True
+
+    def call(self, inputs):
+        embedding, labels = inputs
+        w_norm = tf.math.l2_normalize(self.w, axis=0)
+        cos_theta = tf.matmul(embedding, w_norm)
+        cos_theta = tf.clip_by_value(cos_theta, -1.0 + 1e-6, 1.0 - 1e-6)
+
+        theta = tf.math.acos(cos_theta)
+        target_logits = tf.math.cos(theta + self.margin)
+
+        one_hot = tf.one_hot(tf.cast(labels, tf.int32), self.num_classes)
+        logits = self.scale * (
+            cos_theta * (1.0 - one_hot) + target_logits * one_hot)
+        return logits
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "num_classes": self.num_classes,
+            "margin": self.margin,
+            "scale": self.scale,
+        })
+        return config
+
+
 def build_siamese_model(embedding_net, loss_type=LOSS_TYPE,
-                        include_embeddings=False, alpha=DISTILL_ALPHA):
+                        include_embeddings=False, alpha=DISTILL_ALPHA,
+                        use_arcface=USE_ARC_FACE, num_classes=NUM_CLASSES,
+                        arc_margin=ARC_FACE_MARGIN, arc_scale=ARC_FACE_SCALE,
+                        arc_lambda=ARC_FACE_LAMBDA):
     """
     Build the Siamese model.
 
@@ -202,37 +269,70 @@ def build_siamese_model(embedding_net, loss_type=LOSS_TYPE,
       include_embeddings: if True, model outputs [distance, emb_a, emb_b]
         (for distillation); else just [distance].
       alpha: distillation weight (used to set loss weights).
+      use_arcface: if True, add an ArcFace classifier head per branch. The
+        category labels become extra model INPUTS (for the margin during the
+        forward pass) and are also returned by the generator as CE targets.
+      num_classes, arc_margin, arc_scale, arc_lambda: ArcFace config.
 
     Returns: compiled siamese model.
     """
     input_a = Input(shape=(IMG_SIZE, IMG_SIZE, IMG_CHANNELS), name="input_sketch")
     input_b = Input(shape=(IMG_SIZE, IMG_SIZE, IMG_CHANNELS), name="input_photo")
 
+    model_inputs = [input_a, input_b]
+    targets_extra = []
+
     embedding_a = embedding_net(input_a)
     embedding_b = embedding_net(input_b)
 
     distance = DistanceLayer(name="distance")([embedding_a, embedding_b])
 
+    arc_layer = None
+    if use_arcface:
+        label_a = Input(shape=(), dtype=tf.int64, name="label_sketch")
+        label_b = Input(shape=(), dtype=tf.int64, name="label_photo")
+        model_inputs += [label_a, label_b]
+        # ONE shared ArcFaceLayer instance -> shared class weight matrix.
+        arc_layer = ArcFaceLayer(
+            num_classes=num_classes, margin=arc_margin, scale=arc_scale,
+            name="arcface")
+        logits_a = arc_layer([embedding_a, label_a])
+        logits_b = arc_layer([embedding_b, label_b])
+
     if include_embeddings:
-        model = Model(
-            inputs=[input_a, input_b],
-            outputs=[distance, embedding_a, embedding_b],
-            name="siamese_distill",
-        )
+        outputs = [distance, embedding_a, embedding_b]
+        if arc_layer is not None:
+            outputs += [logits_a, logits_b]
+        model = Model(inputs=model_inputs, outputs=outputs,
+                      name="siamese_distill")
         # NOTE: cannot use dict losses keyed by output names here because the
         # embedding outputs both come from the same shared "l2_normalize" layer
         # (their auto-names would collide). Positional lists map 1:1 in order:
         #   output[0]=distance -> pair_loss
         #   output[1]=emb_a    -> MSE vs teacher sketch embedding
         #   output[2]=emb_b    -> MSE vs teacher photo embedding
+        #   output[3/4]        -> ArcFace sparse CE (when use_arcface)
         pair_loss = get_pair_loss(loss_type)
         losses = [pair_loss, mse_loss, mse_loss]
         loss_weights = [1.0 - alpha, alpha / 2.0, alpha / 2.0]
+        if arc_layer is not None:
+            ce = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+            losses += [ce, ce]
+            loss_weights += [arc_lambda, arc_lambda]
         model.loss_plan = (losses, loss_weights)
     else:
-        model = Model(inputs=[input_a, input_b], outputs=distance, name="siamese")
+        outputs = [distance]
+        if arc_layer is not None:
+            outputs += [logits_a, logits_b]
+        model = Model(inputs=model_inputs, outputs=outputs, name="siamese")
         pair_loss = get_pair_loss(loss_type)
-        model.loss_plan = (pair_loss, None)
+        losses = [pair_loss]
+        loss_weights = [1.0]
+        if arc_layer is not None:
+            ce = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+            losses += [ce, ce]
+            loss_weights += [arc_lambda, arc_lambda]
+        model.loss_plan = (losses, loss_weights)
 
     _compile_siamese(model, learning_rate=0.001)
     return model
@@ -240,16 +340,22 @@ def build_siamese_model(embedding_net, loss_type=LOSS_TYPE,
 
 def _compile_siamese(model, learning_rate):
     losses, weights = model.loss_plan
+    # jit_compile=False: Keras 3 auto-enables XLA for fit() on GPU, but XLA's
+    # fusion autotuner shells out to the system ptxas (CUDA 11.8) which cannot
+    # target CC 9.0 (H100) -> "Autotuner could not compile any configs" crash.
+    # Plain Grappler/cuDNN/cuBLAS execution avoids the ptxas dependency.
     if weights is None:
         model.compile(
             optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
             loss=losses,
+            jit_compile=False,
         )
     else:
         model.compile(
             optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
             loss=losses,
             loss_weights=weights,
+            jit_compile=False,
         )
 
 def recompile_with_lr(siamese, learning_rate):
@@ -297,10 +403,12 @@ def count_trainable_params(model):
 # CONVENIENCE
 # =============================================================================
 def create_model(backbone_name=BACKBONE, loss_type=LOSS_TYPE,
-                 include_embeddings=False, embedding_dim=EMBEDDING_DIM):
+                 include_embeddings=False, embedding_dim=EMBEDDING_DIM,
+                 use_arcface=USE_ARC_FACE):
     """Build embedding net + compiled siamese. Returns (siamese, embedding_net, backbone)."""
     embedding_net, backbone = build_embedding_network(
         backbone_name=backbone_name, embedding_dim=embedding_dim)
     siamese = build_siamese_model(embedding_net, loss_type=loss_type,
-                                  include_embeddings=include_embeddings)
+                                  include_embeddings=include_embeddings,
+                                  use_arcface=use_arcface)
     return siamese, embedding_net, backbone
