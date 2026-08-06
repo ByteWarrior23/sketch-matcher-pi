@@ -1,0 +1,23 @@
+#!/bin/bash
+#PBS -N sketch_conv_u8
+#PBS -q workq
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=04:00:00
+#PBS -j oe
+#PBS -o convert_u8.log
+
+# One-time conversion of the float32 processed arrays (~110 GB) to uint8
+# (~28 GB) so training fits the 32 GB workq mem cap even with the full dataset
+# cached. Run once; training jobs depend on it (afterok).
+
+cd "$PBS_O_WORKDIR"
+
+# --- Conda env ---
+source /apps/compilers/anaconda3/etc/profile.d/conda.sh
+conda activate sketch_matcher
+export PYTHONNOUSERSITE=1
+export OMP_NUM_THREADS=8
+export OPENBLAS_NUM_THREADS=8
+export MKL_NUM_THREADS=8
+
+$CONDA_PREFIX/bin/python hpc/convert_to_u8.py

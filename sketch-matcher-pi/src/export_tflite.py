@@ -37,7 +37,7 @@ except ModuleNotFoundError:  # Colab: imported as src.export_tflite
         PHOTO_EMBEDDINGS_FILENAME, PHOTO_LABELS_FILENAME,
         LABELS_FILENAME, LOG_LEVEL,
     )
-from data_loader import load_processed_data
+from data_loader import load_processed_data, _norm_batch
 
 import logging
 
@@ -78,11 +78,14 @@ def convert_to_tflite(model_path, quantize=TFLITE_QUANTIZE):
         # Provide representative dataset for calibration
         # (needed for accurate int8 quantization)
         def representative_dataset():
-            # Load a small subset of images for calibration
-            sketches = np.load(PROCESSED_DIR / "sketches.npy")
+            # Load a small subset of images for calibration (mmap'd, uint8-safe)
+            sk_path = PROCESSED_DIR / "sketches_u8.npy"
+            if not sk_path.exists():
+                sk_path = PROCESSED_DIR / "sketches.npy"
+            sketches = np.load(sk_path, mmap_mode="r")
             # Take first 100 sketches for calibration
             for i in range(min(100, len(sketches))):
-                img = sketches[i].astype(np.float32)
+                img = _norm_batch(sketches[i])
                 img = img[np.newaxis, ...]  # Add batch dimension
                 yield [img]
 
@@ -138,7 +141,7 @@ def precompute_photo_embeddings(tflite_model_path, photos):
     batch_size = 64
     for start in range(0, n_photos, batch_size):
         end = min(start + batch_size, n_photos)
-        batch = photos[start:end].astype(np.float32)
+        batch = _norm_batch(photos[start:end])  # uint8 -> float32 [0,1]
 
         # If quantized model expects uint8 input, scale
         if input_dtype == np.uint8:

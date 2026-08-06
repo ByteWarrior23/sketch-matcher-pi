@@ -31,6 +31,12 @@ from tensorflow.keras.callbacks import (
     EarlyStopping, ReduceLROnPlateau, ModelCheckpoint, TensorBoard, CSVLogger,
 )
 
+# Bound CPU threads regardless of environment (node watchdog SIGKILLs jobs
+# whose cpupercent exceeds the allocated ncpus; TF otherwise scales to all
+# physical cores).
+tf.config.threading.set_intra_op_parallelism_threads(4)
+tf.config.threading.set_inter_op_parallelism_threads(1)
+
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 try:
@@ -60,7 +66,7 @@ from model import (
     create_model, freeze_backbone, unfreeze_last_n, unfreeze_all,
     count_trainable_params, recompile_with_lr,
 )
-from data_loader import load_processed_data, create_data_generators
+from data_loader import load_processed_data, create_data_generators, predict_normalized
 
 import logging
 
@@ -173,9 +179,9 @@ def compute_teacher_embeddings(teacher_net, batch_size=128, force=False):
 
     sketches, photos, _, _, _, _ = load_processed_data()
     log.info("Computing teacher sketch embeddings...")
-    t_sk = teacher_net.predict(sketches, batch_size=batch_size, verbose=1)
+    t_sk = predict_normalized(teacher_net, sketches, batch_size=batch_size, verbose=1)
     log.info("Computing teacher photo embeddings...")
-    t_ph = teacher_net.predict(photos, batch_size=batch_size, verbose=1)
+    t_ph = predict_normalized(teacher_net, photos, batch_size=batch_size, verbose=1)
 
     np.save(sk_path, t_sk)
     np.save(ph_path, t_ph)
@@ -215,7 +221,8 @@ def main():
     else:
         log.warning("No GPU found! Training will be very slow on CPU.")
 
-    if not (PROCESSED_DIR / "sketches.npy").exists():
+    if not (PROCESSED_DIR / "sketches.npy").exists() \
+            and not (PROCESSED_DIR / "sketches_u8.npy").exists():
         log.error("Preprocessed data not found! Run: python src/preprocess.py")
         sys.exit(1)
 

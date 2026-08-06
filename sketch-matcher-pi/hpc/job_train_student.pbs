@@ -20,14 +20,16 @@ cd "$PBS_O_WORKDIR"
 source /apps/compilers/anaconda3/etc/profile.d/conda.sh
 conda activate sketch_matcher
 export PYTHONNOUSERSITE=1
-# Cap TF/numpy threads to the allocated ncpus. TF defaults to one thread per
-# physical core, which oversubscribes the 8 ncpus granted by PBS and trips the
-# node watchdog (SIGKILL "Killed" at ~1263% cpupercent on an 8-core slot).
-export OMP_NUM_THREADS=8
-export TF_NUM_INTRAOP_THREADS=8
+# Cap TF/numpy/cv2 threads WELL below the allocated ncpus. The node watchdog
+# SIGKILLs jobs whose cpupercent exceeds the granted ncpus (observed kills at
+# cpupercent 235-494% with 8 ncpus): TF's intraop pool AND cv2's internal
+# thread pool each scale to all 128 physical cores otherwise. cv2 threads are
+# additionally capped to 1 in data_loader.py.
+export OMP_NUM_THREADS=4
+export TF_NUM_INTRAOP_THREADS=4
 export TF_NUM_INTEROP_THREADS=1
-export OPENBLAS_NUM_THREADS=8
-export MKL_NUM_THREADS=8
+export OPENBLAS_NUM_THREADS=4
+export MKL_NUM_THREADS=4
 # Use the CUDA 13.0 ptxas (supports CC 9.0 / H100) instead of the default
 # CUDA 11.8 one -- XLA's subprocess kernel compilation needs a ptxas that
 # understands sm_90a, otherwise depthwise convs crash with "ptxas too old".

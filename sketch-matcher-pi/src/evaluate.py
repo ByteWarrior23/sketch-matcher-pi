@@ -33,7 +33,7 @@ from config import (
     BEST_MODEL_PATH, PROCESSED_DIR, TOP_K, DISTANCE_METRIC,
     LOGS_DIR, LOG_LEVEL,
 )
-from data_loader import load_processed_data
+from data_loader import load_processed_data, predict_normalized
 
 import logging
 
@@ -56,7 +56,7 @@ def compute_embeddings(model, images, batch_size=64):
     Returns:
       embeddings: np.array of shape (N, 128)
     """
-    embeddings = model.predict(images, batch_size=batch_size, verbose=1)
+    embeddings = predict_normalized(model, images, batch_size=batch_size, verbose=1)
     return embeddings
 
 

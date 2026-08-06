@@ -12,6 +12,12 @@ cd "$PBS_O_WORKDIR"
 source /apps/compilers/anaconda3/etc/profile.d/conda.sh
 conda activate sketch_matcher
 export PYTHONNOUSERSITE=1
+# Thread caps: keep cpupercent under the 2 ncpus granted (node watchdog).
+export OMP_NUM_THREADS=2
+export TF_NUM_INTRAOP_THREADS=2
+export TF_NUM_INTEROP_THREADS=1
+export OPENBLAS_NUM_THREADS=2
+export MKL_NUM_THREADS=2
 # Use the CUDA 13.0 ptxas (supports CC 9.0 / H100) -- the system default is
 # CUDA 11.8 which cannot compile for sm_90a ("ptxas too old").
 export PATH="/usr/local/cuda-13.0/bin:$PATH"

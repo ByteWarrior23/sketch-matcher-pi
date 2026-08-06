@@ -37,11 +37,17 @@ except ModuleNotFoundError:  # Colab: imported as src.data_loader
 
 import cv2
 
+# The node watchdog SIGKILLs jobs that oversubscribe the ncpus PBS granted
+# (cv2's internal thread pool otherwise scales to all 128 physical cores).
+cv2.setNumThreads(1)
+
 
 # =============================================================================
 # AUGMENTATION  (operates on float32 [0,1] images)
 # =============================================================================
 def _to_uint8(x):
+    if x.dtype == np.uint8:
+        return x
     return np.clip(x * 255.0, 0, 255).astype(np.uint8)
 
 
@@ -189,11 +195,21 @@ class SketchPhotoPairGenerator(Sequence):
         others = [c for c in self.valid_cats if c != cat_a]
         return random.choice(others) if others else None
 
+    def _norm(self, img):
+        """uint8 data -> float32 [0,1]; float32 passes through unchanged."""
+        if img.dtype == np.uint8:
+            return img.astype(np.float32) / 255.0
+        return img
+
     def _aug_sketch(self, img):
-        return augment_sketch(img) if self.augment else img
+        if not self.augment:
+            return self._norm(img)
+        return augment_sketch(img)
 
     def _aug_photo(self, img):
-        return augment_photo(img) if self.augment else img
+        if not self.augment:
+            return self._norm(img)
+        return augment_photo(img)
 
     def __getitem__(self, idx):
         n = self.batch_size
@@ -277,14 +293,49 @@ class SketchPhotoPairGenerator(Sequence):
 # =============================================================================
 # LOADING + SPLIT MASKS
 # =============================================================================
+def _norm_batch(batch):
+    """uint8 -> float32 [0,1]; float32 passes through unchanged."""
+    if batch.dtype == np.uint8:
+        return batch.astype(np.float32) / 255.0
+    return batch
+
+
+def predict_normalized(model, images, batch_size=128, verbose=1):
+    """
+    Predict embeddings over a (possibly uint8, memory-mapped) image array,
+    normalizing each chunk to float32 [0,1] before feeding the model.
+    """
+    n = len(images)
+
+    def gen():
+        for i in range(0, n, batch_size):
+            yield _norm_batch(images[i:i + batch_size])
+
+    steps = -(-n // batch_size)
+    return model.predict(gen(), steps=steps, verbose=verbose)
+
+
 def load_processed_data():
-    # Memory-mapped reads: the float32 arrays are 66 GB (sketches) + 44 GB
-    # (photos). mmap keeps RSS tiny (workq caps requestable mem at 32 GB);
-    # pages are cached by the OS and read per-row in the generator.
-    sketches = np.load(PROCESSED_DIR / "sketches.npy", mmap_mode="r")
-    photos = np.load(PROCESSED_DIR / "photos.npy", mmap_mode="r")
-    sketch_labels = np.load(PROCESSED_DIR / "sketch_labels.npy")
-    photo_labels = np.load(PROCESSED_DIR / "photo_labels.npy")
+    # Prefer the uint8 copies (sketches_u8/photos_u8, ~28 GB total) created by
+    # hpc/convert_to_u8.py; fall back to the original float32 arrays (~110 GB).
+    # All reads are memory-mapped (mmap_mode="r"); pages are cached by the OS
+    # and read per-row in the generator. The generator normalizes uint8 ->
+    # float32 [0,1] internally.
+    sk_path = PROCESSED_DIR / "sketches_u8.npy"
+    ph_path = PROCESSED_DIR / "photos_u8.npy"
+    if not (sk_path.exists() and ph_path.exists()):
+        sk_path = PROCESSED_DIR / "sketches.npy"
+        ph_path = PROCESSED_DIR / "photos.npy"
+    sketches = np.load(sk_path, mmap_mode="r")
+    photos = np.load(ph_path, mmap_mode="r")
+
+    skl_path = PROCESSED_DIR / "sketch_labels_u8.npy"
+    phl_path = PROCESSED_DIR / "photo_labels_u8.npy"
+    if not (skl_path.exists() and phl_path.exists()):
+        skl_path = PROCESSED_DIR / "sketch_labels.npy"
+        phl_path = PROCESSED_DIR / "photo_labels.npy"
+    sketch_labels = np.load(skl_path)
+    photo_labels = np.load(phl_path)
 
     with open(PROCESSED_DIR / "category_names.json") as f:
         category_names = {int(k): v for k, v in json.load(f).items()}
