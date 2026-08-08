@@ -1,10 +1,14 @@
 #!/bin/bash
-#PBS -N sketch_eval
+#PBS -N sketch_sanity_fix
 #PBS -q cpuq
 #PBS -l select=1:ncpus=16
 #PBS -l walltime=04:00:00
 #PBS -j oe
-#PBS -o /Data4/ee_24126016/sketch_matcher/eval.log
+#PBS -o /Data4/ee_24126016/sketch_matcher/sanity_fix.log
+
+# CPU-ONLY sanity check of the ROOT-CAUSE fixes (input range + contrastive
+# loss, ArcFace off) BEFORE launching the expensive GPU retrain.
+#   cd /Data4/ee_24126016/sketch_matcher && qsub hpc/job_sanity_fix.pbs
 
 cd /Data4/ee_24126016/sketch_matcher
 
@@ -21,4 +25,4 @@ export OPENBLAS_NUM_THREADS=4
 TF_PYTHON="$CONDA_PREFIX/bin/python"
 echo "Using python: $TF_PYTHON"
 
-$TF_PYTHON src/evaluate.py
+$TF_PYTHON hpc/sanity_fix.py

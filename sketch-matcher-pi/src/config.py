@@ -86,11 +86,16 @@ NORMALIZE_STD = [0.229, 0.224, 0.225]    # ImageNet std (for transfer learning)
 # Backbone options (all pretrained on ImageNet, all TFLite-convertible):
 #   "mobilenetv2"      -> 3.5M params, ~150ms on Pi 5 (older STUDENT option)
 #   "mobilenetv3large" -> 5.4M params, ~100-150ms on Pi 5 (STUDENT - ships to
-#                         Pi; better accuracy than V2 at similar FLOPs and has
-#                         a built-in [-1,1] rescale, so [0,1] inputs are fed
-#                         correctly)
+#                         Pi; better accuracy than V2 at similar FLOPs)
 #   "efficientnetv2s"  -> 21M params, high accuracy (TEACHER)
 #   "convnexttiny"     -> 28M params, top accuracy (TEACHER)
+#
+# CAUTION: keras-applications backbones contain BUILT-IN preprocessing layers.
+# MobileNetV3Large and EfficientNetV2S ship a Rescaling that expects [0,255]
+# input; ConvNeXtTiny ships a Normalization expecting [0,1]. Feeding raw [0,1]
+# into the Rescaling backbones collapses every input to ~-1 -> constant
+# embeddings (the confirmed collapse bug). model.py maps the [0,1] model input
+# to the per-backbone expected range (see BACKBONE_INPUT_MAP).
 BACKBONE = "mobilenetv3large"
 TEACHER_BACKBONE = "convnexttiny"   # teacher for distillation (not deployed)
 EMBEDDING_DIM = 256          # 128 = light, 256 = balanced, 512 = max capacity
@@ -100,12 +105,13 @@ USE_PRETRAINED = True        # Start from ImageNet weights
 # =============================================================================
 # ARC FACE HEAD (additive angular margin classifier)
 # =============================================================================
-# Adds a classification head on the L2-normed embedding (Deng et al. 2019).
-# ArcFace is a proven accuracy booster for embedding retrieval (the sketch and
-# photo branches each get a shared classifier). The embedding stays
-# L2-normalized for retrieval, so TFLite export is unaffected.
-# Generator yields category labels as extra model inputs AND CE targets.
-USE_ARC_FACE = True
+# DISABLED (confirmed root cause 2): with ArcFace on, the teacher AND student
+# collapsed. The shared classifier's scale/margin (64, 0.5) dominates the pair
+# loss; CE ~40/epoch0 at scale 64 blows past the pair gradient, the embedding
+# flattens to a constant, ArcFace loss decays to 0.05 (= always predict one
+# class), and all stage losses freeze bit-identical. Pair-only training
+# (contrastive) with proper backbone inputs trains a healthy embedding.
+USE_ARC_FACE = False
 ARC_FACE_MARGIN = 0.5         # additive angular margin (radians)
 ARC_FACE_SCALE = 64.0         # logit scale s
 ARC_FACE_LAMBDA = 0.5         # CE loss weight per branch (pair loss weight = 1.0)
@@ -126,9 +132,14 @@ FULL_FINETUNE_STAGE3 = True      # Stage 3: unfreeze everything
 # =============================================================================
 # Options: "contrastive", "circle"
 #   contrastive -> classic (1-Y)*0.5*D^2 + Y*0.5*max(0, M-D)^2
-#   circle      -> SOTA metric loss (Sun et al. 2020), adaptive weights,
-#                  better convergence on hard pairs (recommended)
-LOSS_TYPE = "circle"
+#   circle      -> SOTA metric loss (Sun et al. 2020), adaptive weights
+# USE = "contrastive" (confirmed root cause): with the L2-normalized distance
+# output, Circle operates on cos sim derived from the distance. The distance
+# plateaued at ~0.31 (= sim 0.95) and stayed there bit-identical -- gamma=80
+# pushes exp terms out of float32 dynamic range, so the loss is effectively
+# dead. Contrastive loss drives the raw distance directly (no saturation) and
+# is safe in float32.
+LOSS_TYPE = "contrastive"
 CONTRASTIVE_MARGIN = 1.0     # Contrastive loss margin
 CIRCLE_M = 0.25              # Circle loss margin
 CIRCLE_GAMMA = 80            # Circle loss gamma (scale factor)

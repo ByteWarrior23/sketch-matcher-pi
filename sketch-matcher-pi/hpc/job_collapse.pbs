@@ -1,10 +1,10 @@
 #!/bin/bash
-#PBS -N sketch_eval
+#PBS -N sketch_collapse
 #PBS -q cpuq
-#PBS -l select=1:ncpus=16
-#PBS -l walltime=04:00:00
+#PBS -l select=1:ncpus=8
+#PBS -l walltime=02:00:00
 #PBS -j oe
-#PBS -o /Data4/ee_24126016/sketch_matcher/eval.log
+#PBS -o /Data4/ee_24126016/sketch_matcher/collapse.log
 
 cd /Data4/ee_24126016/sketch_matcher
 
@@ -19,6 +19,5 @@ export OMP_INTEROP=1
 export MKL_NUM_THREADS=4
 export OPENBLAS_NUM_THREADS=4
 TF_PYTHON="$CONDA_PREFIX/bin/python"
-echo "Using python: $TF_PYTHON"
 
-$TF_PYTHON src/evaluate.py
+$TF_PYTHON src/check_teacher.py
