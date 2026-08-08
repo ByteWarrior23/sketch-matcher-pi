@@ -17,14 +17,17 @@ Supported backbones (all ImageNet-pretrained, all TFLite-convertible):
 Input preprocessing: the model input is always float [0,1] (that is what the
 generator, predict_normalized(), the TFLite representative dataset and the Pi
 all feed). Each backbone is then mapped to the exact range its ImageNet
-weights expect, because several keras-applications backbones contain a BUILT-IN
-Rescaling/Normalization layer right after the input:
-  - convnexttiny   -> built-in Normalization expects [0,1]   (feed unchanged)
-  - mobilenetv2    -> no built-in rescale, weights trained on [-1,1]
-  - mobilenetv3large -> built-in Rescaling expects [0,255] -> map [0,1]*255
-  - efficientnetv2s  -> built-in Rescaling expects [0,255] -> map [0,1]*255
-Feeding raw [0,1] into a [0,255]-expecting backbone collapses every input to
-~-1 and produces constant (identity) embeddings -- the confirmed collapse bug.
+weights expect, because keras-applications backbones contain a BUILT-IN
+Rescaling/Normalization layer right after the input (VERIFIED on the cluster
+by probing real photos: wrong range => cross-category cosine ~0.99 = collapse,
+right range => ~0.37-0.53):
+  - convnexttiny     -> built-in Normalization has ImageNet stats on the
+                        [0,255] scale (mean 123.7/116.3/103.5) -> map [0,1]*255
+  - mobilenetv3large -> built-in Rescaling expects [0,255]     -> map [0,1]*255
+  - efficientnetv2s  -> built-in Rescaling expects [0,255]     -> map [0,1]*255
+  - mobilenetv2      -> no built-in rescale, weights trained on [-1,1]
+Feeding raw [0,1] into a [0,255]-expecting backbone collapses every input and
+produces constant (identity) embeddings -- the confirmed collapse bug.
 
 Losses:
   - contrastive (distance-based)
@@ -85,7 +88,7 @@ BACKBONE_INPUT_MAP = {
     "mobilenetv2": lambda x: x * 2.0 - 1.0,          # -> [-1,1]
     "mobilenetv3large": lambda x: x * 255.0,          # -> [0,255] (built-in rescale)
     "efficientnetv2s": lambda x: x * 255.0,           # -> [0,255] (built-in rescale)
-    "convnexttiny": None,                             # built-in Normalization expects [0,1]
+    "convnexttiny": lambda x: x * 255.0,              # -> [0,255] (built-in Normalization, ImageNet-255-scale stats)
 }
 
 

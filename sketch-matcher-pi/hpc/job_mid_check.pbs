@@ -1,0 +1,26 @@
+#!/bin/bash
+#PBS -N sketch_midcheck
+#PBS -q cpuq
+#PBS -l select=1:ncpus=16
+#PBS -l walltime=02:00:00
+#PBS -j oe
+#PBS -o /Data4/ee_24126016/sketch_matcher/hpc/mid_check.log
+
+# CPU-only mid-training diagnostic: load latest stage checkpoint, measure real
+# retrieval accuracy on held-out TEST categories + distinctness + NaN scan.
+#   qsub hpc/job_mid_check.pbs [teacher|student]
+# Usage as a job: pass stage via -v:
+#   qsub -v STAGE=teacher hpc/job_mid_check.pbs
+
+cd /Data4/ee_24126016/sketch_matcher
+
+source /apps/compilers/anaconda3/etc/profile.d/conda.sh
+conda activate sketch_matcher
+export PYTHONNOUSERSITE=1
+export CUDA_VISIBLE_DEVICES=""
+export TF_CPP_MIN_LOG_LEVEL=1
+export MID_N_THREADS=8
+export MID_N_SAMP="${MID_N_SAMP:-80}"
+STAGE="${STAGE:-teacher}"
+
+$CONDA_PREFIX/bin/python hpc/mid_check.py --stage "$STAGE"
