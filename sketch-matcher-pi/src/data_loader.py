@@ -309,7 +309,7 @@ def predict_normalized(model, images, batch_size=128, verbose=1):
 
     def gen():
         for i in range(0, n, batch_size):
-            yield _norm_batch(images[i:i + batch_size])
+            yield (_norm_batch(images[i:i + batch_size]),)
 
     steps = -(-n // batch_size)
     return model.predict(gen(), steps=steps, verbose=verbose)

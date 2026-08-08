@@ -4,9 +4,9 @@
 #PBS -l select=1:ncpus=8:ngpus=1:mem=32gb
 #PBS -l walltime=48:00:00
 #PBS -j oe
-#PBS -o train_student.log
+#PBS -o /Data4/ee_24126016/sketch_matcher/train_student.log
 
-# GPU job: STUDENT phase only (MobileNetV2, 3 stages) with distillation.
+# GPU job: STUDENT phase only (MobileNetV3Large, 3 stages) with distillation.
 # Requires teacher_model.keras + cached teacher embeddings from
 #   qsub hpc/job_train_teacher.pbs
 #
@@ -14,7 +14,7 @@
 # 10 min; after H100_WAIT_MIN (default 1440 min = 24h) falls back to a free
 # MIG slice. Set H100_WAIT_MIN=0 to skip the wait.
 
-cd "$PBS_O_WORKDIR"
+cd /Data4/ee_24126016/sketch_matcher
 
 # --- Conda env ---
 source /apps/compilers/anaconda3/etc/profile.d/conda.sh

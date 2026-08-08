@@ -34,6 +34,7 @@ from config import (
     LOGS_DIR, LOG_LEVEL,
 )
 from data_loader import load_processed_data, predict_normalized
+import model  # registers custom Keras layers (L2Normalize, etc.) for load_model
 
 import logging
 

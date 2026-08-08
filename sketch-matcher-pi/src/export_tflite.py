@@ -38,6 +38,7 @@ except ModuleNotFoundError:  # Colab: imported as src.export_tflite
         LABELS_FILENAME, LOG_LEVEL,
     )
 from data_loader import load_processed_data, _norm_batch
+import model  # registers custom Keras layers (L2Normalize, etc.) for load_model
 
 import logging
 
@@ -122,8 +123,11 @@ def precompute_photo_embeddings(tflite_model_path, photos):
     """
     log.info("Pre-computing photo embeddings with TFLite model...")
 
-    # Load TFLite model
-    interpreter = tf.lite.Interpreter(model_path=str(tflite_model_path))
+    # Load TFLite model (use builtin resolver without default delegates like
+    # XNNPACK, which fails on some CPU nodes with "failed to prepare")
+    interpreter = tf.lite.Interpreter(
+        model_path=str(tflite_model_path),
+        experimental_op_resolver_type=tf.lite.experimental.OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES)
     interpreter.allocate_tensors()
 
     input_details = interpreter.get_input_details()

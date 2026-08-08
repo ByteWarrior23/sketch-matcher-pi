@@ -1,0 +1,20 @@
+#!/bin/bash
+#PBS -N sketch_eval
+#PBS -q cpuq
+#PBS -l select=1:ncpus=16
+#PBS -l walltime=04:00:00
+#PBS -j oe
+#PBS -o /Data4/ee_24126016/sketch_matcher/eval.log
+
+cd /Data4/ee_24126016/sketch_matcher
+
+source /apps/compilers/anaconda3/etc/profile.d/conda.sh
+conda activate sketch_matcher
+export PYTHONNOUSERSITE=1
+export CUDA_VISIBLE_DEVICES=""
+export XLA_FLAGS="--xla_gpu_autotune_level=0"
+export TF_CPP_MIN_LOG_LEVEL=1
+TF_PYTHON="$CONDA_PREFIX/bin/python"
+echo "Using python: $TF_PYTHON"
+
+$TF_PYTHON src/evaluate.py

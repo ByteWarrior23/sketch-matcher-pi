@@ -289,7 +289,11 @@ def main():
     if siamese is not None:
         # ---------------- Sanity check ----------------
         log.info("\n[4/4] Quick validation check...")
-        _, val_gen, _, _ = make_generators(64)
+        if args.phase in ("student", "all"):
+            _, val_gen, _, _ = make_generators(
+                64, teacher_sketch_embs=t_sk, teacher_photo_embs=t_ph)
+        else:
+            _, val_gen, _, _ = make_generators(64)
         siamese.evaluate(val_gen, steps=50, verbose=1)
 
     log.info("\n" + "=" * 60)
