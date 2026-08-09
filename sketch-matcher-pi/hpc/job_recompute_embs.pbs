@@ -1,0 +1,61 @@
+#!/bin/bash
+#PBS -N sketch_recomp_embs
+#PBS -q workq
+#PBS -l select=1:ncpus=8:ngpus=1:mem=32gb
+#PBS -l walltime=06:00:00
+#PBS -j oe
+#PBS -o /Data4/ee_24126016/sketch_matcher/recompute_embs.log
+
+# Recompute teacher embeddings with the NEW (post-fix) teacher_model.keras,
+# overwriting the stale Aug-7 cache from the collapsed model. GPU = minutes.
+#   qsub hpc/job_recompute_embs.pbs
+
+cd /Data4/ee_24126016/sketch_matcher
+
+source /apps/compilers/anaconda3/etc/profile.d/conda.sh
+conda activate sketch_matcher
+export PYTHONNOUSERSITE=1
+export OMP_NUM_THREADS=4
+export TF_NUM_INTRAOP_THREADS=4
+export TF_NUM_INTEROP_THREADS=1
+export OPENBLAS_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+export PATH="/usr/local/cuda-13.0/bin:$PATH"
+export XLA_FLAGS="--xla_gpu_enable_triton_gemm=false --xla_gpu_autotune_level=0"
+export TF_CPP_MIN_LOG_LEVEL=1
+
+echo "Using python: $CONDA_PREFIX/bin/python"
+
+# --- GPU selection: prefer a FREE FULL H100, else a free MIG slice ---
+# Reuses the same logic as the teacher job; embedding needs only a few minutes.
+pick_full() {
+  while IFS= read -r line; do
+    local IDX UUID USED_MEM
+    IDX=$(printf '%s\n' "$line" | cut -d',' -f1 | tr -d ' ')
+    UUID=$(nvidia-smi --query-gpu=uuid --format=csv,noheader -i "$IDX" 2>/dev/null | tr -d '\r' | head -1)
+    USED_MEM=$(nvidia-smi --query-compute-apps=gpu_index,used_gpu_memory --format=csv,noheader 2>/dev/null \
+      | awk -v i="$IDX" -F', ' '$1==i {gsub(/MiB/,"",$2); s+=$2} END {print s+0}')
+    if [ -z "$USED_MEM" ] || [ "$USED_MEM" -lt 4096 ]; then echo "$UUID"; return; fi
+  done < <(nvidia-smi --query-gpu=index,mig.mode.current --format=csv,noheader 2>/dev/null | grep -i disabled)
+}
+pick_mig() {
+  local USED=$(nvidia-smi --query-compute-apps=gpu_uuid --format=csv,noheader 2>/dev/null | sort -u)
+  for u in $(nvidia-smi -L 2>/dev/null | grep "MIG" | sed 's/.*(UUID: //; s/)//'); do
+    if ! printf '%s\n' "$USED" | grep -q "$u"; then echo "$u"; return; fi
+  done
+}
+if [ -z "$CUDA_VISIBLE_DEVICES" ]; then
+  U=$(pick_full)
+  if [ -z "$U" ]; then
+    U=$(pick_mig)
+    [ -z "$U" ] && { echo "ERROR: no free GPU"; exit 1; }
+    echo "Using MIG slice: $U"
+  else
+    echo "Using FULL H100: $U"
+  fi
+  export CUDA_VISIBLE_DEVICES="$U"
+fi
+echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+nvidia-smi -L
+
+$CONDA_PREFIX/bin/python hpc/recompute_teacher_embs.py

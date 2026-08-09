@@ -1,0 +1,27 @@
+#!/bin/bash
+#PBS -N sketch_export
+#PBS -q cpuq
+#PBS -l select=1:ncpus=8
+#PBS -l walltime=04:00:00
+#PBS -j oe
+#PBS -o /Data4/ee_24126016/sketch_matcher/export_tflite.log
+
+# Regenerate the Pi deployment bundle from the NEW student model
+# (best_model.keras saved at end of student training):
+#   TFLite int8 model + photo_embeddings.npy (49430) + labels.
+# Writes models/* and copies to pi_deploy/model_data/.
+#   qsub hpc/job_export_tflite.pbs
+
+cd /Data4/ee_24126016/sketch_matcher
+
+source /apps/compilers/anaconda3/etc/profile.d/conda.sh
+conda activate sketch_matcher
+export PYTHONNOUSERSITE=1
+export CUDA_VISIBLE_DEVICES=""
+export TF_CPP_MIN_LOG_LEVEL=1
+export OMP_NUM_THREADS=4
+export OPENBLAS_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+
+echo "Exporting TFLite from best_model.keras..."
+$CONDA_PREFIX/bin/python src/export_tflite.py

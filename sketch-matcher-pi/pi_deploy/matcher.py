@@ -70,7 +70,12 @@ class SketchMatcher:
         if TFLITE_AVAILABLE:
             self.interpreter = Interpreter(model_path=str(model_path))
         else:
-            self.interpreter = tf.lite.Interpreter(model_path=str(model_path))
+            # Full-TensorFlow fallback (e.g. laptop/PC): skip the XNNPACK
+            # delegate, which fails on some CPU setups with "failed to
+            # prepare" (same workaround as src/export_tflite.py).
+            self.interpreter = tf.lite.Interpreter(
+                model_path=str(model_path),
+                experimental_op_resolver_type=tf.lite.experimental.OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES)
 
         self.interpreter.allocate_tensors()
 
