@@ -14,12 +14,14 @@ Improvements over the previous generator:
      CONFUSABLE_PAIRS categories so the model learns fine discriminations.
   3. On-the-fly augmentation (sketch rotation/stroke thickness, photo
      brightness/contrast) for regularization.
-  4. Optional teacher embeddings -> distillation generator yields extra
-     y-targets [distance_label, teacher_sketch_emb, teacher_photo_emb].
+  4. Optional teacher embeddings -> distillation generator yields 5 inputs
+     (sketch, photo, label, teacher_sketch_emb, teacher_photo_emb) and a dummy
+     zero target; the student siamese outputs the scalar distillation loss.
 
-Note: when distillation is on, augmentation should stay off so teacher
-targets (computed on the raw images) match student inputs (train.py handles
-this; it simply doesn't enable augment).
+Note: teacher targets are computed on the RAW images; the student may still
+receive augmented inputs (train.py enables augment=True for the student) --
+the teacher embedding then acts as an invariance target, which regularizes
+the student against rotation/thickness/brightness changes.
 """
 
 import json
@@ -272,15 +274,17 @@ class SketchPhotoPairGenerator(Sequence):
                 t_sk = t_sk[:k]
                 t_ph = t_ph[:k]
 
+        if self.distill:
+            # Distill siamese (build_distill_siamese) takes 5 inputs
+            # (sketch, photo, label, teacher_sk_emb, teacher_ph_emb) and a
+            # dummy zero target; the scalar loss is the model's own output.
+            inputs = (batch_sk, batch_ph, labels, t_sk, t_ph)
+            outputs = np.zeros((len(labels),), dtype=np.float32)
+            return inputs, outputs
+
         inputs = (batch_sk, batch_ph)
         if self.arcface:
             inputs = (batch_sk, batch_ph, sk_cats, ph_cats)
-
-        if self.distill:
-            outputs = (labels, t_sk, t_ph)
-            if self.arcface:
-                outputs = (labels, t_sk, t_ph, sk_cats, ph_cats)
-            return inputs, outputs
         if self.arcface:
             return inputs, (labels, sk_cats, ph_cats)
         return inputs, labels
@@ -387,7 +391,8 @@ def create_data_generators(batch_size=32, pairs_per_epoch=50000, augment=False,
 
     Args:
       batch_size, pairs_per_epoch: training batch / epoch size
-      augment: on-the-fly augmentation (keep False when distilling)
+      augment: on-the-fly augmentation (safe with distillation: teacher
+        targets act as invariance targets for the augmented student inputs)
       teacher_sketch_embs/teacher_photo_embs: (N, EMB) arrays aligned with the
         FULL processed arrays; rows are sub-sliced by the split masks.
       hard_negative_ratio, confusable_pairs: hard-negative mining config

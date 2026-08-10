@@ -20,8 +20,19 @@
 cd /Data4/ee_24126016/sketch_matcher
 
 # --- Conda env ---
-source /apps/compilers/anaconda3/etc/profile.d/conda.sh
-conda activate sketch_matcher
+# Prefer the explicit env python path: `conda activate` can silently fail in
+# the PBS job shell (empty CONDA_PREFIX), which previously made $TF_PYTHON
+# resolve to the NON-EXISTENT /bin/python -> job died in 1s with exit 2.
+export TF_PYTHON=/Data4/ee_24126016/.conda/envs/sketch_matcher/bin/python
+if [ ! -x "$TF_PYTHON" ]; then
+  source /apps/compilers/anaconda3/etc/profile.d/conda.sh
+  conda activate sketch_matcher
+  export TF_PYTHON="$CONDA_PREFIX/bin/python"
+fi
+if [ ! -x "$TF_PYTHON" ]; then
+  echo "FATAL: no working env python ($TF_PYTHON)"
+  exit 2
+fi
 export PYTHONNOUSERSITE=1
 # Cap TF/numpy/cv2 threads WELL below the allocated ncpus. The node watchdog
 # SIGKILLs jobs whose cpupercent exceeds the granted ncpus (observed kills at
@@ -42,7 +53,6 @@ export PATH="/usr/local/cuda-13.0/bin:$PATH"
 # CUDA 11.8. Disable the Triton GEMM fusion path and the config autotuner so
 # XLA uses driver-JIT kernels instead of ptxas-compiled ones.
 export XLA_FLAGS="--xla_gpu_enable_triton_gemm=false --xla_gpu_autotune_level=0"
-TF_PYTHON="$CONDA_PREFIX/bin/python"
 echo "Using python: $TF_PYTHON"
 
 # --- GPU selection: prefer a FREE FULL H100, wait for it, else MIG fallback ---

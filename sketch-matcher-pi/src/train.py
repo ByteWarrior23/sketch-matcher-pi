@@ -263,8 +263,11 @@ def main():
             teacher_net.save(TEACHER_MODEL_PATH)
             log.info(f"  Teacher embedding saved: {TEACHER_MODEL_PATH}")
 
-            # Compute + cache teacher embeddings for all processed images
-            t_sk, t_ph = compute_teacher_embeddings(teacher_net)
+            # Compute + cache teacher embeddings for all processed images.
+            # force=True: ALWAYS recompute from the freshly-trained teacher --
+            # a stale cache (old/broken teacher) silently poisons the student
+            # distillation (this exact bug shipped the wrong embeddings once).
+            t_sk, t_ph = compute_teacher_embeddings(teacher_net, force=True)
         else:
             t_sk, t_ph = _load_teacher_embeddings()
 
@@ -273,12 +276,13 @@ def main():
             log.info(f"\n[2/4] Training STUDENT ({BACKBONE}) with distillation...")
             siamese, embedding_net, backbone = create_model(
                 backbone_name=BACKBONE, loss_type=LOSS_TYPE,
-                include_embeddings=True, embedding_dim=EMBEDDING_DIM)
+                include_embeddings=True, embedding_dim=EMBEDDING_DIM,
+                distill=True)
             count_trainable_params(siamese)
 
             run_three_stages(siamese, embedding_net, backbone, "student",
                              teacher_sketch_embs=t_sk, teacher_photo_embs=t_ph,
-                             augment=False)
+                             augment=True)
 
             log.info("\n[3/4] Saving student model...")
             siamese.save(FINAL_MODEL_PATH)

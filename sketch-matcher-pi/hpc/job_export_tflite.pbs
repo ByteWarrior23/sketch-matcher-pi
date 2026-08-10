@@ -14,8 +14,16 @@
 
 cd /Data4/ee_24126016/sketch_matcher
 
-source /apps/compilers/anaconda3/etc/profile.d/conda.sh
-conda activate sketch_matcher
+export TF_PYTHON=/Data4/ee_24126016/.conda/envs/sketch_matcher/bin/python
+if [ ! -x "$TF_PYTHON" ]; then
+  source /apps/compilers/anaconda3/etc/profile.d/conda.sh
+  conda activate sketch_matcher
+  export TF_PYTHON="$CONDA_PREFIX/bin/python"
+fi
+if [ ! -x "$TF_PYTHON" ]; then
+  echo "FATAL: no working env python ($TF_PYTHON)"
+  exit 2
+fi
 export PYTHONNOUSERSITE=1
 export CUDA_VISIBLE_DEVICES=""
 export TF_CPP_MIN_LOG_LEVEL=1
@@ -24,4 +32,4 @@ export OPENBLAS_NUM_THREADS=4
 export MKL_NUM_THREADS=4
 
 echo "Exporting TFLite from best_model.keras..."
-$CONDA_PREFIX/bin/python src/export_tflite.py
+"$TF_PYTHON" src/export_tflite.py

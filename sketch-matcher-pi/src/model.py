@@ -58,6 +58,7 @@ try:
         IMG_SIZE, IMG_CHANNELS, EMBEDDING_DIM, DROPOUT_RATE,
         CONTRASTIVE_MARGIN, CIRCLE_M, CIRCLE_GAMMA, USE_PRETRAINED,
         BACKBONE, TEACHER_BACKBONE, LOSS_TYPE, DISTILL_ALPHA,
+        DISTILL_BETA, DISTILL_TEMPERATURE,
         USE_ARC_FACE, ARC_FACE_MARGIN, ARC_FACE_SCALE, ARC_FACE_LAMBDA,
         NUM_CLASSES, LOG_LEVEL,
     )
@@ -66,6 +67,7 @@ except ModuleNotFoundError:  # Colab: imported as src.model
         IMG_SIZE, IMG_CHANNELS, EMBEDDING_DIM, DROPOUT_RATE,
         CONTRASTIVE_MARGIN, CIRCLE_M, CIRCLE_GAMMA, USE_PRETRAINED,
         BACKBONE, TEACHER_BACKBONE, LOSS_TYPE, DISTILL_ALPHA,
+        DISTILL_BETA, DISTILL_TEMPERATURE,
         USE_ARC_FACE, ARC_FACE_MARGIN, ARC_FACE_SCALE, ARC_FACE_LAMBDA,
         NUM_CLASSES, LOG_LEVEL,
     )
@@ -195,6 +197,75 @@ def circle_loss(y_true, y_pred, m=CIRCLE_M, gamma=CIRCLE_GAMMA):
 
 def mse_loss(y_true, y_pred):
     return tf.reduce_mean(tf.square(y_true - y_pred))
+
+
+def cosine_alignment_loss(y_true, y_pred):
+    """1 - cos(student_emb, teacher_emb) on L2-normalized vectors.
+
+    Much stronger directional signal than MSE on unit vectors: MSE between
+    normalized vectors saturates near 0 (tiny gradients once aligned); the
+    cosine deficit is proportional to the angular distance at all scales.
+    """
+    return tf.reduce_mean(1.0 - tf.reduce_sum(y_true * y_pred, axis=-1))
+
+
+@tf.keras.utils.register_keras_serializable()
+class DistillTotalLoss(layers.Layer):
+    """Single scalar distillation loss for the student siamese.
+
+    Inputs (in order): distance, emb_a, emb_b, label, teacher_sk_emb, teacher_ph_emb.
+
+    total = (1 - alpha) * contrastive
+          + alpha * ( beta * 0.5*(align_a + align_b)          # cosine alignment
+                    + (1 - beta) * softlabel_distill )        # teacher geometry
+
+    softlabel_distill: temperature-softmax over the within-batch teacher
+    cross-similarity matrix (sketch_i vs all photos_j), matched by the student
+    via cross-entropy. This is the term that transfers the teacher's RELATIVE
+    geometry (its 0.54 cross-category separation vs the student's 0.79 bunching).
+    """
+
+    def __init__(self, alpha=DISTILL_ALPHA, beta=DISTILL_BETA,
+                 temperature=DISTILL_TEMPERATURE,
+                 contrastive_margin=CONTRASTIVE_MARGIN, **kwargs):
+        super().__init__(**kwargs)
+        self.alpha = float(alpha)
+        self.beta = float(beta)
+        self.temperature = float(temperature)
+        self.contrastive_margin = float(contrastive_margin)
+
+    def get_config(self):
+        cfg = super().get_config()
+        cfg.update(alpha=self.alpha, beta=self.beta,
+                   temperature=self.temperature,
+                   contrastive_margin=self.contrastive_margin)
+        return cfg
+
+    def call(self, inputs):
+        distance, emb_a, emb_b, label, t_sk, t_ph = inputs
+
+        y = tf.cast(label, tf.float32)
+        contrastive = tf.reduce_mean(
+            (1.0 - y) * 0.5 * tf.square(distance)
+            + y * 0.5 * tf.square(tf.maximum(0.0, self.contrastive_margin - distance))
+        )
+
+        align_a = tf.reduce_mean(1.0 - tf.reduce_sum(emb_a * t_sk, axis=-1))
+        align_b = tf.reduce_mean(1.0 - tf.reduce_sum(emb_b * t_ph, axis=-1))
+
+        s_t = tf.matmul(t_sk, t_ph, transpose_b=True) / self.temperature
+        s_s = tf.matmul(emb_a, emb_b, transpose_b=True) / self.temperature
+        p_t = tf.nn.softmax(s_t, axis=-1)
+        q_s = tf.nn.log_softmax(s_s, axis=-1)
+        softlabel = tf.reduce_mean(-tf.reduce_sum(p_t * q_s, axis=-1))
+
+        distill = self.beta * 0.5 * (align_a + align_b) + (1.0 - self.beta) * softlabel
+        return (1.0 - self.alpha) * contrastive + self.alpha * distill
+
+
+def identity_loss(y_true, y_pred):
+    """Loss for scalar-output models: y_pred already IS the scalar loss."""
+    return y_pred
 
 
 def get_pair_loss(loss_type=LOSS_TYPE):
@@ -364,6 +435,44 @@ def build_siamese_model(embedding_net, loss_type=LOSS_TYPE,
     return model
 
 
+def build_distill_siamese(embedding_net, alpha=DISTILL_ALPHA, beta=DISTILL_BETA,
+                          temperature=DISTILL_TEMPERATURE,
+                          contrastive_margin=CONTRASTIVE_MARGIN):
+    """Student siamese that returns a SINGLE scalar distillation loss.
+
+    Instead of per-output losses (which can't see both branches and both
+    teacher targets at once), the whole distillation objective is computed in
+    one custom layer. The generator must yield inputs
+    (input_sketch, input_photo, label, teacher_sk_emb, teacher_ph_emb) and a
+    dummy zero target.
+
+    The embedding_net (shared) is still accessible via get_layer("embedding_network")
+    for checkpoint recovery and TFLite export.
+    """
+    input_a = Input(shape=(IMG_SIZE, IMG_SIZE, IMG_CHANNELS), name="input_sketch")
+    input_b = Input(shape=(IMG_SIZE, IMG_SIZE, IMG_CHANNELS), name="input_photo")
+    label = Input(shape=(), dtype=tf.float32, name="label")
+    t_sk = Input(shape=(EMBEDDING_DIM,), name="teacher_sketch")
+    t_ph = Input(shape=(EMBEDDING_DIM,), name="teacher_photo")
+
+    embedding_a = embedding_net(input_a)
+    embedding_b = embedding_net(input_b)
+
+    distance = DistanceLayer(name="distance")([embedding_a, embedding_b])
+
+    loss_scalar = DistillTotalLoss(
+        alpha=alpha, beta=beta, temperature=temperature,
+        contrastive_margin=contrastive_margin,
+        name="distill_total_loss")([distance, embedding_a, embedding_b,
+                                    label, t_sk, t_ph])
+
+    model = Model(inputs=[input_a, input_b, label, t_sk, t_ph],
+                  outputs=loss_scalar, name="siamese_distill")
+    model.loss_plan = ([identity_loss], None)
+    _compile_siamese(model, learning_rate=0.001)
+    return model
+
+
 def _compile_siamese(model, learning_rate):
     losses, weights = model.loss_plan
     # jit_compile=False: Keras 3 auto-enables XLA for fit() on GPU, but XLA's
@@ -430,11 +539,16 @@ def count_trainable_params(model):
 # =============================================================================
 def create_model(backbone_name=BACKBONE, loss_type=LOSS_TYPE,
                  include_embeddings=False, embedding_dim=EMBEDDING_DIM,
-                 use_arcface=USE_ARC_FACE):
+                 use_arcface=USE_ARC_FACE, distill=False):
     """Build embedding net + compiled siamese. Returns (siamese, embedding_net, backbone)."""
     embedding_net, backbone = build_embedding_network(
         backbone_name=backbone_name, embedding_dim=embedding_dim)
-    siamese = build_siamese_model(embedding_net, loss_type=loss_type,
-                                  include_embeddings=include_embeddings,
-                                  use_arcface=use_arcface)
+    if distill:
+        siamese = build_distill_siamese(
+            embedding_net, alpha=DISTILL_ALPHA, beta=DISTILL_BETA,
+            temperature=DISTILL_TEMPERATURE, contrastive_margin=CONTRASTIVE_MARGIN)
+    else:
+        siamese = build_siamese_model(embedding_net, loss_type=loss_type,
+                                      include_embeddings=include_embeddings,
+                                      use_arcface=use_arcface)
     return siamese, embedding_net, backbone

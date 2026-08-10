@@ -119,8 +119,19 @@ NUM_CLASSES = 125             # must match preprocessed category count
 
 # Knowledge distillation (teacher -> student for the Pi)
 # If False, the BACKBONE model is trained directly (no distillation).
+#
+# Student loss = (1-alpha)*contrastive
+#              + alpha*( beta*0.5*(cos_align_a + cos_align_b)   # embedding alignment
+#                      + (1-beta)*softlabel_distill )            # teacher geometry
+# - cosine alignment (not MSE): pushes the student's L2-normalized embedding
+#   toward the teacher's direction; MSE on unit vectors saturates once aligned.
+# - softlabel distillation: student matches the teacher's within-batch
+#   cross-similarity distribution (temperature-scaled), transferring the
+#   teacher's RELATIVE separation (cross-cat cos 0.54) instead of bunching.
 ENABLE_DISTILLATION = True
-DISTILL_ALPHA = 0.5          # weight of distillation loss vs contrastive loss
+DISTILL_ALPHA = 0.8          # weight of the distillation terms vs contrastive
+DISTILL_BETA = 0.6           # share of distill weight on cosine alignment (rest = softlabel)
+DISTILL_TEMPERATURE = 0.1    # softmax sharpness for the teacher similarity matrix
 
 # Transfer learning freeze schedule
 FREEZE_BACKBONE_STAGE1 = True    # Stage 1: freeze all backbone layers
@@ -133,14 +144,15 @@ FULL_FINETUNE_STAGE3 = True      # Stage 3: unfreeze everything
 # Options: "contrastive", "circle"
 #   contrastive -> classic (1-Y)*0.5*D^2 + Y*0.5*max(0, M-D)^2
 #   circle      -> SOTA metric loss (Sun et al. 2020), adaptive weights
-# USE = "contrastive" (confirmed root cause): with the L2-normalized distance
-# output, Circle operates on cos sim derived from the distance. The distance
-# plateaued at ~0.31 (= sim 0.95) and stayed there bit-identical -- gamma=80
-# pushes exp terms out of float32 dynamic range, so the loss is effectively
-# dead. Contrastive loss drives the raw distance directly (no saturation) and
-# is safe in float32.
+# Loss: contrastive -> classic (1-Y)*0.5*D^2 + Y*0.5*max(0, M-D)^2
+# MARGIN IS THE SEPARATION LEVER (verified on the 125-cat deployed task):
+# with M=1.0 the model stops pushing negatives once their distance >= 1.0
+# (cosine <= 0.5), so embeddings settle into a TIGHT CONE (teacher photo
+# cross-cat cos 0.58 -> teacher 125-cat top-1 only 32.5%; student 0.79 ->
+# 22.5%, everything ~99.9% confident). M=1.4 keeps pushing negatives until
+# distance >= 1.4 (cosine <= ~0.02) -> well-separated cone.
 LOSS_TYPE = "contrastive"
-CONTRASTIVE_MARGIN = 1.0     # Contrastive loss margin
+CONTRASTIVE_MARGIN = 1.4     # Contrastive loss margin
 CIRCLE_M = 0.25              # Circle loss margin
 CIRCLE_GAMMA = 80            # Circle loss gamma (scale factor)
 SIM_TEMPERATURE = 0.1        # temperature for cosine similarity (sharpening)
@@ -153,25 +165,25 @@ VAL_SPLIT = 0.10            # 10% for validation (threshold tuning)
 TEST_SPLIT = 0.10           # 10% for final evaluation
 
 # Stage 1: train dense layers only (frozen backbone)
-STAGE1_EPOCHS = 100
+STAGE1_EPOCHS = 150
 # Batch sizes are overridable via env (HPC/MIG sizing) -- e.g. in a PBS script:
 #   export SKETCH_BATCH1=64 SKETCH_BATCH2=64 SKETCH_BATCH3=32
 STAGE1_BATCH_SIZE = int(os.environ.get("SKETCH_BATCH1", "256"))
 STAGE1_LEARNING_RATE = 0.001
 
 # Stage 2: unfreeze last 12 backbone layers
-STAGE2_EPOCHS = 60
+STAGE2_EPOCHS = 100
 STAGE2_BATCH_SIZE = int(os.environ.get("SKETCH_BATCH2", "128"))
 STAGE2_LEARNING_RATE = 0.0001
 
 # Stage 3: full fine-tune
-STAGE3_EPOCHS = 150
+STAGE3_EPOCHS = 300
 STAGE3_BATCH_SIZE = int(os.environ.get("SKETCH_BATCH3", "64"))
 STAGE3_LEARNING_RATE = 0.00001
 
 # Early stopping
-EARLY_STOPPING_PATIENCE = 15   # More patience for longer training
-REDUCE_LR_PATIENCE = 5         # Reduce LR if no improvement for 5 epochs
+EARLY_STOPPING_PATIENCE = 30   # Best-student run: keep training long, stop on true plateau
+REDUCE_LR_PATIENCE = 8         # Reduce LR if no improvement for 8 epochs
 REDUCE_LR_FACTOR = 0.5         # Multiply LR by this factor
 
 # =============================================================================

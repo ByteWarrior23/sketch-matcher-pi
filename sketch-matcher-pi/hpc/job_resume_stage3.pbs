@@ -1,25 +1,18 @@
 #!/bin/bash
-#PBS -N sketch_train_student
+#PBS -N sketch_student_resume
 #PBS -q workq
 #PBS -l select=1:ncpus=8:ngpus=1:mem=32gb
 #PBS -l walltime=48:00:00
 #PBS -j oe
-#PBS -o /Data4/ee_24126016/sketch_matcher/train_student.log
+#PBS -o /Data4/ee_24126016/sketch_matcher/resume_stage3.log
 
-# GPU job: STUDENT phase only (MobileNetV3Large, 3 stages) with distillation.
-# Requires teacher_model.keras + cached teacher embeddings from
-#   qsub hpc/job_train_teacher.pbs
-#
-# MAX-ACCURACY MODE: waits for a FREE FULL H100 (not a MIG slice). Polls every
-# 10 min; after H100_WAIT_MIN (default 1440 min = 24h) falls back to a free
-# MIG slice. Set H100_WAIT_MIN=0 to skip the wait.
+# GPU job: RESUME student Stage 3 from the best checkpoint (insurance for the
+# main student job being walltime-killed mid-Stage-3, or for extending past
+# one 48h window). Only submit AFTER the main job (sketch_train_student) ends.
 
 cd /Data4/ee_24126016/sketch_matcher
 
 # --- Conda env ---
-# Prefer the explicit env python path: `conda activate` can silently fail in
-# the PBS job shell (empty CONDA_PREFIX), which previously made $TF_PYTHON
-# resolve to the NON-EXISTENT /bin/python -> job died in 1s with exit 2.
 export TF_PYTHON=/Data4/ee_24126016/.conda/envs/sketch_matcher/bin/python
 if [ ! -x "$TF_PYTHON" ]; then
   source /apps/compilers/anaconda3/etc/profile.d/conda.sh
@@ -31,33 +24,16 @@ if [ ! -x "$TF_PYTHON" ]; then
   exit 2
 fi
 export PYTHONNOUSERSITE=1
-# Cap TF/numpy/cv2 threads WELL below the allocated ncpus. The node watchdog
-# SIGKILLs jobs whose cpupercent exceeds the granted ncpus (observed kills at
-# cpupercent 235-494% with 8 ncpus): TF's intraop pool AND cv2's internal
-# thread pool each scale to all 128 physical cores otherwise. cv2 threads are
-# additionally capped to 1 in data_loader.py.
 export OMP_NUM_THREADS=4
 export TF_NUM_INTRAOP_THREADS=4
 export TF_NUM_INTEROP_THREADS=1
 export OPENBLAS_NUM_THREADS=4
 export MKL_NUM_THREADS=4
-# Use the CUDA 13.0 ptxas (supports CC 9.0 / H100) instead of the default
-# CUDA 11.8 one -- XLA's subprocess kernel compilation needs a ptxas that
-# understands sm_90a, otherwise depthwise convs crash with "ptxas too old".
 export PATH="/usr/local/cuda-13.0/bin:$PATH"
-# Workaround for "Autotuner could not compile any configs for HLO": XLA's
-# fusion autotuner needs a ptxas for CC 9.0 (H100), but the system toolkit is
-# CUDA 11.8. Disable the Triton GEMM fusion path and the config autotuner so
-# XLA uses driver-JIT kernels instead of ptxas-compiled ones.
 export XLA_FLAGS="--xla_gpu_enable_triton_gemm=false --xla_gpu_autotune_level=0"
 echo "Using python: $TF_PYTHON"
 
-# --- GPU selection: prefer a FREE FULL H100, wait for it, else MIG fallback ---
-# Only MIG-Disabled (true full) H100s qualify -- MIG-sliced GPUs 0-4 look
-# "free" via compute-apps when their slices are idle, but they are NOT whole
-# GPUs. Returns the GPU UUID (GPU-xxxx) of the first free full H100:
-# CUDA_VISIBLE_DEVICES accepts GPU UUIDs (CUDA >= 11.2); numeric device
-# indices are unsafe here because MIG renumbers CUDA devices.
+# --- GPU selection: prefer a FREE FULL H100, wait 6h, else MIG fallback ---
 pick_full() {
   while IFS= read -r line; do
     local IDX UUID USED_MEM
@@ -75,7 +51,7 @@ pick_mig() {
   done
 }
 if [ -z "$CUDA_VISIBLE_DEVICES" ]; then
-  export H100_WAIT_MIN="${H100_WAIT_MIN:-1440}"
+  export H100_WAIT_MIN="${H100_WAIT_MIN:-360}"
   echo "$(date) Waiting up to ${H100_WAIT_MIN} min for a FREE FULL H100..."
   WAITED=0
   while [ $WAITED -lt $H100_WAIT_MIN ]; do
@@ -100,4 +76,4 @@ fi
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 nvidia-smi -L
 
-$TF_PYTHON src/train.py --phase student
+$TF_PYTHON hpc/resume_stage3.py
