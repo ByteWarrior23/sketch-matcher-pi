@@ -3,89 +3,56 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Rock Paper Scissors — vs the Machine</title>
-<link rel="stylesheet" href="style.css">
+<title>Neon Arcade — Play with Your Hands</title>
+<link rel="stylesheet" href="css/style.css">
 </head>
-<body>
-  <div class="bg"></div>
+<body class="hub-body">
+  <div class="bg-orb orb-a"></div>
+  <div class="bg-orb orb-b"></div>
+  <div class="bg-orb orb-c"></div>
 
-  <header class="topbar">
-    <div class="brand">
-      <span class="brand-mark">✊</span>
-      <div>
-        <h1>Rock Paper Scissors</h1>
-        <p class="tagline">You vs the Machine — powered by AI</p>
-      </div>
+  <header class="hub-head">
+    <div class="hub-logo">
+      <span class="logo-dot"></span>
+      <span>NEON <b>ARCADE</b></span>
     </div>
-    <div class="badge"><span class="dot"></span> LIVE</div>
+    <span class="hub-sub">pick your game</span>
   </header>
 
-  <main class="stage">
-    <!-- CAMERA -->
-    <section class="camera-card glass">
-      <video id="video" autoplay playsinline muted></video>
-      <canvas id="preview" width="640" height="480"></canvas>
+  <main class="hub-main">
+    <div class="hub-hero">
+      <h1 class="hub-title">Play with your <span class="grad-text">hands</span>.</h1>
+      <p class="hub-desc">AI-powered arcade games that watch you play. No controller, no keyboard — just you.</p>
+    </div>
 
-      <!-- overlay states -->
-      <div id="overlay" class="overlay hidden">
-        <div id="overlayBig"></div>
-        <div id="overlaySub"></div>
-      </div>
-
-      <div id="hud" class="hud hidden">
-        <span id="hudMove">—</span>
-        <span id="hudConf"></span>
-      </div>
-
-      <div id="landing" class="landing">
-        <div class="landing-emoji">✊ ✋ ✌️</div>
-        <h2>Ready to play?</h2>
-        <p>Show rock, paper or scissors to the camera.<br>
-           The machine will recognize your hand and play back.</p>
-        <button id="startBtn" class="btn btn-primary">Start Game</button>
-        <p class="hint">Camera access is required. Runs fully in your browser.</p>
-      </div>
-
-      <div id="camError" class="cam-error hidden">
-        <h3>Camera unavailable</h3>
-        <p>Allow camera access, then press Start again.</p>
-        <button id="retryBtn" class="btn btn-ghost">Try Again</button>
-      </div>
-    </section>
-
-    <!-- RESULT PANEL -->
-    <section id="result" class="result glass hidden">
-      <div class="result-head">
-        <span class="round-label">ROUND <span id="roundNum">1</span></span>
-        <span id="resultText" class="result-text"></span>
-      </div>
-      <div class="versus">
-        <div class="player-card">
-          <span class="player-name">YOU</span>
-          <span id="youMove" class="move-emoji">?</span>
+    <section class="game-grid">
+      <a class="game-card g-rps" href="rps.html">
+        <div class="card-glow"></div>
+        <div class="card-art">✊ ✋ ✌️</div>
+        <div class="card-info">
+          <h2>Rock Paper Scissors</h2>
+          <p>Face the Machine with your camera — best of 5 rounds wins the duel.</p>
         </div>
-        <span class="vs">VS</span>
-        <div class="player-card">
-          <span class="player-name">MACHINE</span>
-          <span id="piMove" class="move-emoji">?</span>
+        <div class="card-cta">
+          <span>Play Now</span><span class="arrow">→</span>
         </div>
-      </div>
-      <div class="result-actions">
-        <button id="nextBtn" class="btn btn-primary">Next Round</button>
-        <button id="resetBtn" class="btn btn-ghost">Reset Score</button>
-      </div>
+      </a>
+
+      <a class="game-card g-ttt" href="ttt.html">
+        <div class="card-glow"></div>
+        <div class="card-art">⭕ ❌</div>
+        <div class="card-info">
+          <h2>Tic Tac Toe</h2>
+          <p>Classic 2-player duel. Set the rounds, chase the win streak.</p>
+        </div>
+        <div class="card-cta">
+          <span>Play Now</span><span class="arrow">→</span>
+        </div>
+      </a>
     </section>
   </main>
 
-  <!-- SCOREBOARD -->
-  <section class="scoreboard glass">
-    <div class="score-cell"><span class="score-label">You</span><span id="scoreYou" class="score-num">0</span></div>
-    <div class="score-cell"><span class="score-label">Draws</span><span id="scoreDraw" class="score-num">0</span></div>
-    <div class="score-cell"><span class="score-label">Machine</span><span id="scorePi" class="score-num">0</span></div>
-  </section>
-
-  <footer class="foot">Camera runs on-device · model: MobileNetV3 (int8) · class demo build</footer>
-
-  <script src="app.js"></script>
+  <footer class="hub-foot">Powered by MediaPipe vision · runs on your machine</footer>
+  <script src="js/audio.js"></script>
 </body>
 </html>

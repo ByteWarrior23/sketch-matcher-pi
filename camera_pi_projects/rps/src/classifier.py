@@ -17,6 +17,7 @@ except ImportError:
     try:
         import tensorflow as tf
         TFLiteInterpreter = tf.lite.Interpreter
+        _tf = tf
     except ImportError:
         raise ImportError("need tensorflow or tflite-runtime")
 
@@ -34,7 +35,11 @@ class RPSClassifier:
             tflite = cands[0]
         self.tflite_path = tflite
         self.labels_path = model_dir / "labels.json"
-        self.interp = TFLiteInterpreter(model_path=str(self.tflite_path))
+        kwargs = {}
+        if "_tf" in globals() and hasattr(_tf.lite.experimental, "OpResolverType"):
+            # int8 MobileNetV3 can break XNNPACK; fall back to builtin kernels
+            kwargs["experimental_op_resolver_type"] = _tf.lite.experimental.OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES
+        self.interp = TFLiteInterpreter(model_path=str(self.tflite_path), **kwargs)
         self.interp.allocate_tensors()
         self.input_details = self.interp.get_input_details()[0]
         self.output_details = self.interp.get_output_details()[0]

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rock Paper Scissors — Neon Arcade</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="game-body">
+  <div class="bg-orb orb-a"></div>
+  <div class="bg-orb orb-b"></div>
+
+  <header class="game-top">
+    <a class="back-link" href="index.html">← Arcade</a>
+    <div class="game-title">✊ ✋ ✌️ <b>RPS vs the Machine</b></div>
+    <div class="round-pips" id="roundPips"></div>
+  </header>
+
+  <main class="rps-layout">
+    <!-- camera -->
+    <section class="cam-card">
+      <div class="cam-frame">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="preview" width="320" height="240" style="display:none"></canvas>
+
+        <div id="overlay" class="overlay hidden">
+          <div id="overlayBig"></div>
+          <div id="overlaySub"></div>
+        </div>
+
+        <div id="hud" class="hud hidden">
+          <span id="hudMove" class="hud-move">👋</span>
+          <span id="hudConf" class="hud-conf"></span>
+        </div>
+
+        <div id="landing" class="landing">
+          <div class="landing-emoji">✊ ✋ ✌️</div>
+          <h2>Ready to duel?</h2>
+          <p>Show rock, paper or scissors to the camera.<br>First to 3 wins the match.</p>
+          <button id="startBtn" class="btn btn-primary">Enter the Arena</button>
+          <p class="hint">Camera access required · frames stay on your machine</p>
+        </div>
+
+        <div id="camError" class="cam-error hidden">
+          <h3>Camera unavailable</h3>
+          <p>Allow camera access in the browser, then retry.</p>
+          <button id="retryBtn" class="btn btn-ghost">Try Again</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- result / versus -->
+    <section id="result" class="versus-card hidden">
+      <div class="result-head">
+        <span class="round-label">ROUND <span id="roundNum">1</span></span>
+        <span id="resultText" class="result-text"></span>
+        <span id="resultSub" class="result-sub"></span>
+      </div>
+      <div class="versus">
+        <div class="player-pill">
+          <span class="p-name">YOU</span>
+          <span id="youMove" class="p-emoji">?</span>
+          <span id="youLabel" class="p-label"></span>
+        </div>
+        <span class="vs-mark">VS</span>
+        <div class="player-pill">
+          <span class="p-name">MACHINE</span>
+          <span id="piMove" class="p-emoji">?</span>
+          <span id="piLabel" class="p-label"></span>
+        </div>
+      </div>
+      <div class="result-actions">
+        <button id="nextBtn" class="btn btn-primary">Next Round</button>
+        <button id="resetBtn" class="btn btn-ghost">Reset</button>
+      </div>
+    </section>
+
+    <!-- match winner banner -->
+    <section id="matchBanner" class="match-banner hidden">
+      <div class="match-cup">🏆</div>
+      <div id="matchText" class="match-text"></div>
+      <div class="match-score" id="matchScore"></div>
+      <button id="rematchBtn" class="btn btn-primary">Rematch</button>
+    </section>
+  </main>
+
+  <!-- scoreboard -->
+  <section class="scorebar">
+    <div class="score-chip you"><span>YOU</span><b id="scoreYou">0</b></div>
+    <div class="score-chip draw"><span>DRAW</span><b id="scoreDraw">0</b></div>
+    <div class="score-chip pi"><span>MACHINE</span><b id="scorePi">0</b></div>
+  </section>
+
+  <div id="streakNum" class="streak"></div>
+  <div id="flash" class="flash"></div>
+
+  <script src="js/audio.js"></script>
+  <script src="js/rps.js"></script>
+</body>
+</html>

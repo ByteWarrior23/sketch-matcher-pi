@@ -25,21 +25,26 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from classifier import RPSClassifier  # noqa: E402
+from hand_rps import recognize as hand_recognize  # noqa: E402
 import cv2  # noqa: E402
 
 WEB_DIR = Path(__file__).resolve().parent
-STATIC = {
-    "": "index.html",
+ROUTES = {
     "/": "index.html",
     "/index.html": "index.html",
-    "/style.css": "style.css",
-    "/app.js": "app.js",
+    "/rps.html": "rps.html",
+    "/ttt.html": "ttt.html",
+    "/rps": "rps.html",
+    "/ttt": "ttt.html",
 }
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
     ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".json": "application/json",
 }
 
 
@@ -71,10 +76,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?")[0]
-        if path in STATIC:
-            p = WEB_DIR / STATIC[path]
+        if path in ROUTES:
+            p = WEB_DIR / ROUTES[path]
             ctype = CONTENT_TYPES.get(p.suffix, "application/octet-stream")
             self._send(200, p.read_bytes(), ctype)
+            return
+        # static files under /css, /js, /assets
+        rel = path.lstrip("/")
+        candidate = WEB_DIR / rel
+        if "/" in rel and candidate.exists() and candidate.is_file() and path.startswith(("/css/", "/js/", "/assets/")):
+            ctype = CONTENT_TYPES.get(candidate.suffix, "application/octet-stream")
+            self._send(200, candidate.read_bytes(), ctype)
             return
         if path == "/health":
             self._send(200, b'{"ok":true}', "application/json")
@@ -91,8 +103,20 @@ class Handler(BaseHTTPRequestHandler):
             img = cv2.imdecode(np.frombuffer(body, dtype=np.uint8), cv2.IMREAD_COLOR)
             if img is None:
                 raise ValueError("bad image")
-            label, conf, probs = self.classifier.classify(img)
+
+            # Primary: MediaPipe hand gate + geometric RPS. Never guesses on empty frames.
+            r = hand_recognize(img)
+
+            # Fallback: if a hand IS present but geometry is ambiguous (<0.55), ask the CNN.
+            label, conf = r["label"], r["conf"]
+            probs = []
+            if r["detected"] and conf < 0.55:
+                c_label, c_conf, c_probs = self.classifier.classify(img)
+                if c_conf > conf:
+                    label, conf, probs = c_label, c_conf, c_probs
+
             resp = json.dumps({
+                "detected": bool(r["detected"]),
                 "label": label,
                 "conf": float(conf),
                 "probs": [float(p) for p in probs],
