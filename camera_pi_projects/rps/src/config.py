@@ -14,7 +14,7 @@ MEAN = 127.5
 STD = 127.5  # MobileNetV3 built-in rescale equivalent for TFLite int8 path
 
 # Training
-BACKBONE = "mobilenetv3large"
+BACKBONE = "MobileNetV3Large"
 BATCH_SIZE = 32
 EPOCHS_STAGE1 = 20   # frozen backbone, head only
 EPOCHS_STAGE2 = 30   # unfreeze last 12 layers

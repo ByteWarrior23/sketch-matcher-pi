@@ -59,7 +59,8 @@ def run_stage(model, backbone, trainable_last, epochs, lr, tag, patience):
             layer.trainable = False
         for layer in backbone.layers[trainable_last:]:
             layer.trainable = True
-        print(f"[{tag}] unfroze last {abs(trainable_last)} layers", flush=True)
+        n_unfrozen = len(backbone.layers[trainable_last:])
+        print(f"[{tag}] unfroze {n_unfrozen} layers (from index {trainable_last})", flush=True)
 
     model.compile(optimizer=keras.optimizers.Adam(learning_rate=lr),
                   loss="sparse_categorical_crossentropy", metrics=["accuracy"])
@@ -83,7 +84,7 @@ def main():
 
     run_stage(model, backbone, None, EPOCHS_STAGE1, LR_STAGE1, "stage1", PATIENCE)
     run_stage(model, backbone, -12, EPOCHS_STAGE2, LR_STAGE2, "stage2", PATIENCE)
-    run_stage(model, backbone, None, EPOCHS_STAGE3, LR_STAGE3, "stage3", PATIENCE)
+    run_stage(model, backbone, 0, EPOCHS_STAGE3, LR_STAGE3, "stage3", PATIENCE)
 
     # final: reload best checkpoint and save as the canonical model
     model.load_weights(CKPT_DIR / "best.keras")

@@ -79,7 +79,7 @@ def main():
     ])
     model.compile(optimizer="adam", loss="sparse_categorical_crossentropy", metrics=["accuracy"])
     model.fit(x_train, y_train, validation_data=(x_val, y_val),
-              batch_size=32, epochs=12, verbose=1)
+              batch_size=32, epochs=6, verbose=2)
 
     loss, acc = model.evaluate(x_val, y_val, verbose=0)
     print(f"stopgap val acc {acc:.4f}", flush=True)

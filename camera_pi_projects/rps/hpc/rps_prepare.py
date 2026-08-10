@@ -74,25 +74,22 @@ def main():
         return hits[0] if hits else None
 
     train_dir = find_subdir(base, "rps") or base
-    test_dir = find_subdir(base, "rps-test-set")
-    if test_dir is None:
-        # some versions keep a single folder
-        test_dir = train_dir
 
-    print("Building train set...", flush=True)
-    x_train, y_train = build(train_dir, CLASSES)
-    print(f"Building test set...", flush=True)
-    x_test, y_test = build(test_dir, CLASSES)
+    print("Building full set...", flush=True)
+    x, y = build(train_dir, CLASSES)
 
-    # Stratified train/val split from train
-    n = len(y_train)
+    # Stratified train/val/test split (this Kaggle version ships no test set).
+    n = len(y)
     idx = np.random.permutation(n)
-    n_val = int(0.2 * n)
+    n_val = int(0.1 * n)
+    n_test = int(0.1 * n)
     val_idx = idx[:n_val]
-    train_idx = idx[n_val:]
+    test_idx = idx[n_val:n_val + n_test]
+    train_idx = idx[n_val + n_test:]
 
-    x_val, y_val = x_train[val_idx], y_train[val_idx]
-    x_train, y_train = x_train[train_idx], y_train[train_idx]
+    x_val, y_val = x[val_idx], y[val_idx]
+    x_test, y_test = x[test_idx], y[test_idx]
+    x_train, y_train = x[train_idx], y[train_idx]
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     np.save(DATA_DIR / "rps_train_x.npy", x_train)

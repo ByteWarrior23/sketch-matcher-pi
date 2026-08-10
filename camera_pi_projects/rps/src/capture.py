@@ -20,7 +20,8 @@ class CameraSource:
         self._open()
 
     def _open(self):
-        self.cap = cv2.VideoCapture(self.port)
+        port = int(self.port) if self.port.isdigit() else self.port
+        self.cap = cv2.VideoCapture(port)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         if self.is_ip():

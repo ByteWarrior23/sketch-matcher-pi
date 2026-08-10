@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rock Paper Scissors — vs the Machine</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="bg"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">✊</span>
+      <div>
+        <h1>Rock Paper Scissors</h1>
+        <p class="tagline">You vs the Machine — powered by AI</p>
+      </div>
+    </div>
+    <div class="badge"><span class="dot"></span> LIVE</div>
+  </header>
+
+  <main class="stage">
+    <!-- CAMERA -->
+    <section class="camera-card glass">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="preview" width="640" height="480"></canvas>
+
+      <!-- overlay states -->
+      <div id="overlay" class="overlay hidden">
+        <div id="overlayBig"></div>
+        <div id="overlaySub"></div>
+      </div>
+
+      <div id="hud" class="hud hidden">
+        <span id="hudMove">—</span>
+        <span id="hudConf"></span>
+      </div>
+
+      <div id="landing" class="landing">
+        <div class="landing-emoji">✊ ✋ ✌️</div>
+        <h2>Ready to play?</h2>
+        <p>Show rock, paper or scissors to the camera.<br>
+           The machine will recognize your hand and play back.</p>
+        <button id="startBtn" class="btn btn-primary">Start Game</button>
+        <p class="hint">Camera access is required. Runs fully in your browser.</p>
+      </div>
+
+      <div id="camError" class="cam-error hidden">
+        <h3>Camera unavailable</h3>
+        <p>Allow camera access, then press Start again.</p>
+        <button id="retryBtn" class="btn btn-ghost">Try Again</button>
+      </div>
+    </section>
+
+    <!-- RESULT PANEL -->
+    <section id="result" class="result glass hidden">
+      <div class="result-head">
+        <span class="round-label">ROUND <span id="roundNum">1</span></span>
+        <span id="resultText" class="result-text"></span>
+      </div>
+      <div class="versus">
+        <div class="player-card">
+          <span class="player-name">YOU</span>
+          <span id="youMove" class="move-emoji">?</span>
+        </div>
+        <span class="vs">VS</span>
+        <div class="player-card">
+          <span class="player-name">MACHINE</span>
+          <span id="piMove" class="move-emoji">?</span>
+        </div>
+      </div>
+      <div class="result-actions">
+        <button id="nextBtn" class="btn btn-primary">Next Round</button>
+        <button id="resetBtn" class="btn btn-ghost">Reset Score</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- SCOREBOARD -->
+  <section class="scoreboard glass">
+    <div class="score-cell"><span class="score-label">You</span><span id="scoreYou" class="score-num">0</span></div>
+    <div class="score-cell"><span class="score-label">Draws</span><span id="scoreDraw" class="score-num">0</span></div>
+    <div class="score-cell"><span class="score-label">Machine</span><span id="scorePi" class="score-num">0</span></div>
+  </section>
+
+  <footer class="foot">Camera runs on-device · model: MobileNetV3 (int8) · class demo build</footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

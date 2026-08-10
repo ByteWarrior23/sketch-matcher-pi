@@ -26,7 +26,13 @@ from config import EXPORT_DIR  # noqa: E402
 class RPSClassifier:
     def __init__(self, model_dir=None):
         model_dir = Path(model_dir) if model_dir else EXPORT_DIR
-        self.tflite_path = model_dir / "rps_model.tflite"
+        tflite = model_dir / "rps_model.tflite"
+        if not tflite.exists():
+            cands = sorted(model_dir.glob("*.tflite"))
+            if not cands:
+                raise FileNotFoundError(f"no .tflite in {model_dir}")
+            tflite = cands[0]
+        self.tflite_path = tflite
         self.labels_path = model_dir / "labels.json"
         self.interp = TFLiteInterpreter(model_path=str(self.tflite_path))
         self.interp.allocate_tensors()

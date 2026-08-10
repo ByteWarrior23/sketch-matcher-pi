@@ -26,7 +26,7 @@ def rep_data():
     rng = np.random.default_rng(0)
     idx = rng.choice(n, size=200, replace=False)
     for i in idx:
-        yield X_TR[i:i + 1]
+        yield [X_TR[i:i + 1].astype(np.float32)]
 
 converter = tf.lite.TFLiteConverter.from_keras_model(model)
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
