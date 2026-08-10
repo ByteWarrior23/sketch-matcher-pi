@@ -35,3 +35,11 @@ pi_deploy.zip
 sketch-matcher-pi/../SESSION_NOTES.md
 softcomputing model chat.md
 sketch_matcher_colab_gemini.ipynb
+
+# RPS project artifacts (dataset, models, logs — never commit)
+/camera_pi_projects/rps/data/
+/camera_pi_projects/rps/models/
+/camera_pi_projects/rps/logs/
+/camera_pi_projects/rps/tests/**/*.png
+/camera_pi_projects/rps/tests/**/*.jpg
+/camera_pi_projects/rps/pi_deploy/model_data/
