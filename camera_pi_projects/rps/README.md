@@ -1,42 +1,35 @@
 # Neon Arcade
 
-A **gesture-based arcade**. Your webcam tracks your **body pose** or **hand
+A **gesture-based arcade**. Your webcam tracks your **hand position and
 gestures** and turns them into game input — no keyboard, mouse, or touch needed.
-It drives real games running in BlueStacks (Subway Surfers, Temple Run) via ADB,
-plus in-browser hand games (Rock Paper Scissors, Finger Math, Simon Says) and a
-keyboard-bridged browser game (Level Devil).
+It drives two browser games: **Subway Surfers** (on Poki, controlled by
+index-finger swipes) and **Level Devil** (controlled by hand-position zones),
+both via a local keyboard bridge.
 
 Everything runs locally — camera frames never leave your machine.
 
 ## Quick start
 
-1. **Install BlueStacks** (one time): double-click `scripts/install_bluestacks.bat`
-   (or let the arcade install it automatically on first run).
-2. In the BlueStacks Play Store, install **Subway Surfers** and/or **Temple Run 2**.
-3. BlueStacks → **Settings → Advanced → Android Debug Bridge → Enable**.
-4. Run the arcade: double-click `scripts/start_arcade.bat`.
-5. Open **http://127.0.0.1:8123** and pick a game.
+1. Install Python requirements: `pip install -r requirements.txt`.
+2. Run the arcade: double-click `scripts/start_arcade.bat`.
+3. Open **http://127.0.0.1:8123** and pick a game.
 
-The **real game runs in BlueStacks**; the browser page is your camera + gesture
-controller. First run auto-installs BlueStacks, connects ADB, and sideloads game
-APKs from APKPure — keep the page open while it sets up.
+Both games are browser games played in an embedded panel (Chrome/Edge needed
+for the pop-out window). No emulator or BlueStacks is required.
 
 ## How to play
 
 From the hub (**http://127.0.0.1:8123**), click a game card. Every game follows
-one of three flows:
+one of two flows:
 
-### 1. Real games in BlueStacks (Subway Surfers, Temple Run, RPS / Simon / Finger Math)
+### 1. Web games (Subway Surfers, Level Devil)
 
-1. On the game page click **Start hand-zone control** (Subway/Temple Run) or
-   **Real game · BlueStacks** (RPS / Simon / Finger Math).
+1. On the game page click **Start game**.
 2. Allow camera access when prompted.
-3. First time: the arcade auto-installs BlueStacks, enables + connects ADB,
-   sideloads the game APK, and launches the game. **Keep this page open** — first
-   run takes a few minutes and the status line shows progress.
-4. When it says **"Real game launched"**, alt-tab to the BlueStacks window — the
-   game is running there. The browser page stays open as your controller.
-5. Hold your hand in a zone to play (see Controls).
+3. The game loads in the panel and in its own window; the page becomes your
+   gesture controller. **Click inside the game once** so keyboard controls
+   reach it.
+4. Play with your hand (see Controls below).
 
 ### 2. Browser games (RPS, Finger Math, Simon Says)
 
@@ -62,35 +55,58 @@ the controller, so you never touch a keyboard, mouse, or screen.
 
 | Game | Control | Target |
 |---|---|---|
-| Subway Surfers | Hand zones (hold to repeat) | Real game in BlueStacks |
-| Temple Run | Hand zones (hold to repeat) | Real game in BlueStacks |
+| Subway Surfers | Finger swipes (flick → arrow key) | Web game on Poki |
+| Temple Run | Finger swipes | Web game on Poki |
 | Rock Paper Scissors | Hand gestures | Browser or real game in BlueStacks |
 | Finger Math | Finger count (0–5) | Browser or real game in BlueStacks |
 | Simon Says | Hand gestures | Browser or real game in BlueStacks |
 | Level Devil | Hand zones (hold to repeat) | Browser game via keyboard bridge |
 
-### Hand-zone controls (Subway Surfers, Temple Run, Level Devil)
+### Finger-swipe controls (Subway Surfers, Temple Run)
 
-Control games by holding your hand in a zone:
+Track the index fingertip and flick it — each flick fires one arrow key through
+the keyboard bridge. No emulator, so a flick reaches the game in ~40-50 ms.
 
-| Zone | Subway Surfers | Temple Run | Level Devil |
-|---|---|---|---|
-| Hand left side | Lane left | Turn left | Move left (←) |
-| Hand right side | Lane right | Turn right | Move right (→) |
-| Hand high in center | Jump | Jump | Jump (Space) |
-| Hand low in center | Roll | Slide | — (ignored) |
-| Hand mid-center | Rest — nothing fires | Rest | Stop |
+| Flick | Command |
+|---|---|
+| Finger left | Lane left (←) |
+| Finger right | Lane right (→) |
+| Finger up | Jump (↑) |
+| Finger down | Roll (↓) |
+| Hand in center | Reset between flicks |
 
 How it works:
 
-1. **Hold, don't swipe** — keep your hand in a zone and the command repeats
-   (~300 ms); move to the center to stop. Lowering your hand from up only
-   returns to rest — it never fires the down command.
+1. **Flick from the center** — a swipe only counts when it starts inside the
+   neutral zone, moves at least 0.14 of the frame within 400 ms, and is clearly
+   dominant on one axis. Lowering your hand back to center after an up flick
+   never fires roll.
+2. **Return to center between flicks** — each flick must be followed by a reset
+   to the neutral zone before the next one registers.
+3. Each flick is a keyboard press via the keyboard bridge — click inside the
+   game once so it has focus.
+
+### Hand-zone controls (Level Devil)
+
+Control the game by holding your hand in a zone:
+
+| Zone | Level Devil |
+|---|---|
+| Hand left side | Move left (←) |
+| Hand right side | Move right (→) |
+| Hand high in center | Jump (Space) |
+| Hand high on a side | Run + keep jumping |
+| Hand low in center | Stop |
+
+How it works:
+
+1. **Hold, don't swipe** — keep your hand in a zone and the key stays held;
+   raised on a side, Space taps repeatedly (~280 ms) so the character keeps
+   jumping while running.
 2. Zones use hysteresis, so the hand can rest near a boundary without
    flickering commands.
-3. For Subway/Temple Run each repeat becomes an ADB swipe on the BlueStacks
-   screen (90 ms swipe); for Level Devil it becomes a keyboard press — click
-   inside the game panel once so it has focus.
+3. Every key goes through the keyboard bridge — click inside the game panel
+   once so it has focus.
 
 ### Hand-gesture controls (RPS, Simon, Finger Math)
 

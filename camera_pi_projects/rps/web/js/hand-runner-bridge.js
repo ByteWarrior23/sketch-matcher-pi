@@ -21,38 +21,56 @@ const HandRunner = (() => {
   const Z_UP = { on: 0.42, off: 0.50 };
   const Z_DOWN = { on: 0.62, off: 0.55 };
 
-  // ---- zone-based control for Subway Surfers (BlueStacks) ----
-  // Hold a zone to keep sending that command: side = lane change, center-high =
-  // jump, center-low = roll. Center mid height = rest (nothing fires).
-  const SUBWAY_REPEAT_MS = 300;
-  const SUBWAY_ACTIONS = { left: "left", right: "right", up: "jump", down: "duck" };
-  const subway = { zone: "rest", timer: null };
+  // ---- swipe-based control for Subway Surfers (poki.com web) ----
+  // The index fingertip is tracked; a quick flick fires one arrow key. A swipe
+  // only counts when it starts from the neutral center zone, so returning your
+  // hand to center after an up swipe never fires the down (roll) command.
+  const SWIPE_MIN_MOVE = 0.14, SWIPE_MAX_MS = 400, SWIPE_COOLDOWN_MS = 250;
+  const NEUTRAL = { x0: 0.30, x1: 0.70, y0: 0.30, y1: 0.70 };
+  const SUBWAY_KEYS = { left: "left", right: "right", up: "up", down: "down" };
+  const sw = { anchor: null, locked: false, lastFire: -1e9 };
 
-  function subwayZone(x, py) {
-    const z = subway.zone;
-    if (x < Z_LEFT.on || (z === "left" && x < Z_LEFT.off)) return "left";
-    if (x > Z_RIGHT.on || (z === "right" && x > Z_RIGHT.off)) return "right";
-    if (py < Z_UP.on || (z === "up" && py < Z_UP.off)) return "up";
-    if (py > Z_DOWN.on || (z === "down" && py > Z_DOWN.off)) return "down";
-    return "rest";
+  function swReset() {
+    sw.anchor = null;
+    sw.locked = false;
   }
 
-  function subwayFire(zone) {
-    Arcade.api("/api/action", { game: "subway", action: SUBWAY_ACTIONS[zone] })
-      .then((res) => {
-        const last = $("lastSent");
-        if (last) {
-          last.textContent = (res && res.ok)
-            ? (zone.toUpperCase() + " SENT to game")
-            : "send failed: " + ((res && res.error) || "no response");
-        }
-      })
-      .catch(() => { const last = $("lastSent"); if (last) last.textContent = "send failed: network error"; });
+  function subwaySwipe(fx, fy, t) {
+    const inNeutral = fx > NEUTRAL.x0 && fx < NEUTRAL.x1 &&
+                      fy > NEUTRAL.y0 && fy < NEUTRAL.y1;
+    if (sw.locked && inNeutral) {
+      sw.locked = false;
+      sw.anchor = { x: fx, y: fy, t };
+      return null;
+    }
+    if (inNeutral) {
+      sw.anchor = { x: fx, y: fy, t };
+      return null;
+    }
+    if (sw.locked || !sw.anchor) return null;
+    if (t - sw.anchor.t > SWIPE_MAX_MS) return null;
+    if (t - sw.lastFire < SWIPE_COOLDOWN_MS) return null;
+    const dx = fx - sw.anchor.x, dy = fy - sw.anchor.y;
+    const adx = Math.abs(dx), ady = Math.abs(dy);
+    if (Math.max(adx, ady) < SWIPE_MIN_MOVE) return null;
+    sw.locked = true;
+    sw.lastFire = t;
+    if (adx > ady * 1.3) return dx > 0 ? "right" : "left";
+    if (ady > adx * 1.3) return dy > 0 ? "down" : "up";
+    sw.locked = false;
+    return null;
   }
 
-  function stopSubway() {
-    if (subway.timer) { clearInterval(subway.timer); subway.timer = null; }
-    subway.zone = "rest";
+  function subwayTap(zone) {
+    const key = SUBWAY_KEYS[zone];
+    Arcade.api("/api/key", { game: "subway", key, state: "tap" }).then((res) => {
+      const last = $("lastSent");
+      if (last) {
+        last.textContent = (res && res.ok)
+          ? (zone.toUpperCase() + " SENT")
+          : "key failed: " + ((res && res.error) || "no response");
+      }
+    }).catch(() => { const last = $("lastSent"); if (last) last.textContent = "key failed: network error"; });
   }
 
   // ---- position-based (joystick) control for Level Devil ----
@@ -99,7 +117,7 @@ const HandRunner = (() => {
 
   function releaseKeys() {
     stopJumpRepeat();
-    stopSubway();
+    swReset();
     for (const k of ["left", "right", "jump"]) {
       if (joy[k]) sendKey(k, "up");
       joy[k] = false;
@@ -325,23 +343,16 @@ const HandRunner = (() => {
       return;
     }
 
-    // Subway Surfers: hold a zone to keep sending that command. Center mid
-    // height (rest) is neutral, so lowering your hand from up never rolls.
-    const sx = 1 - px;
-    const zone = subwayZone(sx, py);
-    if (zone !== subway.zone) {
-      stopSubway();
-      subway.zone = zone;
-      if (zone !== "rest") {
-        subwayFire(zone);
-        subway.timer = setInterval(() => subwayFire(zone), SUBWAY_REPEAT_MS);
-      }
-    }
+    // Subway Surfers (poki.com web): flick the index finger to send an arrow
+    // key. Flicks only fire from the center, so lowering your hand back to
+    // center never triggers roll.
+    const fx = 1 - lm[8].x;  // mirrored index fingertip
+    const swipe = subwaySwipe(fx, lm[8].y, now);
+    if (swipe) subwayTap(swipe);
     if (hudMove) {
-      const label = zone === "rest" ? "CENTER" :
-        zone === "up" ? "UP (jump)" :
-        zone === "down" ? "DOWN (roll)" : zone.toUpperCase();
-      hudMove.textContent = label;
+      hudMove.textContent = sw.locked
+        ? (swipe ? swipe.toUpperCase() + " SENT" : "return to center")
+        : "flick to move";
     }
   }
 

@@ -19,6 +19,7 @@ PLAY_STORE = {
 }
 
 LEVEL_DEVIL_URL = "https://level-devil.org/en/"
+SUBWAY_POKI_URL = "https://poki.com/en/g/subway-surfers"
 
 SWIPE = {
     "left": (540, 1200, 180, 1200),
@@ -241,9 +242,13 @@ class InputBridge:
             return {"ok": False, "error": str(e)}
 
     def keyboard_state(self, game: str, key: str, state: str) -> dict:
-        """Hold/release/tap a key (joystick + click for Level Devil)."""
-        if game != "leveldevil":
-            return {"ok": False, "error": "key hold is only for leveldevil"}
+        """Hold/release/tap a key (Level Devil zones + Subway Surfers web swipes)."""
+        if game == "leveldevil":
+            map_key = {"left": "left", "right": "right", "jump": "space", "click": "space"}.get(key)
+        elif game == "subway":
+            map_key = {"left": "left", "right": "right", "up": "up", "down": "down"}.get(key)
+        else:
+            return {"ok": False, "error": f"key hold is only for leveldevil/subway"}
         map_key = {"left": "left", "right": "right", "jump": "space", "click": "space"}.get(key)
         if not map_key:
             return {"ok": False, "error": f"unknown key {key}"}
@@ -287,8 +292,11 @@ class InputBridge:
         }
 
     def launch_level_devil(self) -> dict:
+        return self.launch_web(LEVEL_DEVIL_URL)
+
+    def launch_web(self, url: str) -> dict:
         now = time.time()
-        if self._game_proc and self._game_proc.poll() is None:
+        if self._game_proc and self._game_proc.poll() is None and url == LEVEL_DEVIL_URL:
             return {"ok": True, "note": "already running"}
         browsers = [
             Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
@@ -299,17 +307,22 @@ class InputBridge:
             return {"ok": False, "error": "Chrome/Edge not found"}
         try:
             self._game_proc = subprocess.Popen(
-                [exe, f"--app={LEVEL_DEVIL_URL}", "--new-window"],
+                [exe, f"--app={url}", "--new-window"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
-            self._last_launch["leveldevil"] = now
-            return {"ok": True, "url": LEVEL_DEVIL_URL}
+            self._last_launch[url] = now
+            return {"ok": True, "url": url}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
     def prepare_game(self, game: str) -> dict:
         """Install/start BlueStacks, connect ADB, sideload if needed, launch game."""
         steps = []
+        if game == "subway":
+            # Subway Surfers runs as a web game (poki.com) — no emulator needed.
+            launch = self.launch_web(SUBWAY_POKI_URL)
+            steps.append({"step": "launch", **launch})
+            return {"ok": launch.get("ok", False), "steps": steps}
         try:
             from arcade_setup import (  # noqa: WPS433
                 find_bluestacks,
@@ -372,6 +385,8 @@ class InputBridge:
     def launch(self, game: str) -> dict:
         if game == "leveldevil":
             return self.launch_level_devil()
+        if game == "subway":
+            return self.launch_web(SUBWAY_POKI_URL)
         if game in ANDROID_PACKAGES:
             return self.launch_android(game)
         return {"ok": False, "error": f"unknown game {game}"}
