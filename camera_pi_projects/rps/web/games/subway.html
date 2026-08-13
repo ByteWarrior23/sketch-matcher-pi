@@ -38,15 +38,16 @@
 
     <section id="playPanel" class="game-panel hidden">
       <div class="panel-head">
-        <div class="panel-title">Hand-swipe controller</div>
+        <div class="panel-title">Hand-zone controller</div>
         <div class="status-line"><span id="statusDot" class="status-dot"></span><span id="statusText">Ready</span></div>
       </div>
       <p class="instructions" id="adbStatus">Checking BlueStacks…</p>
       <div class="control-grid">
-        <div class="control-item"><kbd>Swipe hand left</kbd><span>← swipe left</span></div>
-        <div class="control-item"><kbd>Swipe hand right</kbd><span>→ swipe right</span></div>
-        <div class="control-item"><kbd>Swipe hand up</kbd><span>↑ jump</span></div>
-        <div class="control-item"><kbd>Swipe hand down</kbd><span>↓ roll</span></div>
+        <div class="control-item"><kbd>Hand on left side</kbd><span>← lane left (repeats)</span></div>
+        <div class="control-item"><kbd>Hand on right side</kbd><span>→ lane right (repeats)</span></div>
+        <div class="control-item"><kbd>Hand up high (center)</kbd><span>↑ jump (repeats)</span></div>
+        <div class="control-item"><kbd>Hand low (center)</kbd><span>↓ roll (repeats)</span></div>
+        <div class="control-item"><kbd>Hand mid-center</kbd><span>Rest — nothing fires</span></div>
         <div class="control-item"><kbd>Last sent</kbd><span id="lastSent">—</span></div>
       </div>
       <div class="btn-row">
@@ -56,7 +57,7 @@
       </div>
       <div class="game-placeholder">
         <div class="big">Game runs in BlueStacks</div>
-        <p>After launch, alt-tab to the BlueStacks window. Keep this page open — moving your hand sends swipe commands to the real game. Move your hand back to neutral between swipes. The arrow keys work directly too.</p>
+        <p>After launch, alt-tab to the BlueStacks window. Keep this page open — holding your hand in a zone sends that command to the real game. Bring your hand back to mid-center to rest; lowering it from up only returns to rest, it never rolls. The arrow keys work directly too.</p>
         <p class="hint">Setup runs automatically on first start — keep this page open.</p>
       </div>
     </section>

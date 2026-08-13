@@ -1,85 +1,64 @@
-/* Hand-swipe runner controller — BlueStacks runner games (Subway/Temple Run)
- * driven by moving your hand.
+/* Hand-zone runner controller — Subway Surfers and Level Devil.
  *
  * Runs MediaPipe HandLandmarker DIRECTLY in the browser (GPU/WASM, full-res
- * frames, no network round-trip) for fast, accurate swipe detection — the
- * same model and approach used by the official mediapipe-samples web demos.
- * Only the final swipe action is POSTed to the server (/api/action).
+ * frames, no network round-trip). Hand POSITION drives both games — there is
+ * no motion/swipe detection, so returning your hand to center never fires an
+ * unwanted command. Only the final action is POSTed to the server.
  *
- * Anti-false-positive measures (matching MediaPipe's guidance):
+ * Reliability measures:
  *   - only the highest-scoring hand with score >= 0.5 is used
- *   - a hand must persist for CONFIRM_FRAMES consecutive frames
- *   - swipes need peak displacement + a velocity gate (rejects drift/jitter)
- *   - EMA smoothing of the palm position
+ *   - zones engage/release with hysteresis (no flicker at boundaries)
+ *   - holding a zone repeats that action; center (rest) stops it
  */
 "use strict";
 
 const HandRunner = (() => {
   const $ = (id) => document.getElementById(id);
-  const SWIPE_ACTIONS = { up: "jump", down: "duck", left: "left", right: "right" };
-  const SWIPE_LABELS = { up: "SWIPE UP", down: "SWIPE DOWN", left: "SWIPE LEFT", right: "SWIPE RIGHT" };
 
-  // ---- in-browser swipe tracker (ported from server _SwipeTracker) ----
-  // Subway/Temple Run: each swipe is ONE discrete command (lane change), then
-  // nothing until the next swipe. Short cooldown = fast consecutive moves.
-  const WIN_MS = 450, MIN_MOVE = 0.05, MIN_SPAN_MS = 60, COOLDOWN_MS = 280,
-        MAX_DROPOUT_MS = 400, CONFIRM_FRAMES = 1, MIN_SPEED = 0.2, EMA_ALPHA = 0.7;
+  // ---- shared zone thresholds (mirrored frame x) ----
+  const Z_LEFT = { on: 0.24, off: 0.45 };
+  const Z_RIGHT = { on: 0.76, off: 0.55 };
+  const Z_UP = { on: 0.42, off: 0.50 };
+  const Z_DOWN = { on: 0.62, off: 0.55 };
 
-  function makeTracker() {
-    return {
-      pts: [], streak: 0, ema: null, lastFire: -1e9, lastSeen: -1e9,
-      reset() {
-        this.pts = []; this.streak = 0; this.ema = null; this.lastFire = -1e9; this.lastSeen = -1e9;
-      },
-      tick(t) {
-        if (this.pts.length && t - this.lastSeen > MAX_DROPOUT_MS) {
-          this.pts = []; this.streak = 0; this.ema = null;
-        }
-        this.lastSeen = t;
-      },
-      update(x, y, t) {
-        if (this.pts.length && t - this.lastSeen > MAX_DROPOUT_MS) {
-          this.pts = []; this.streak = 0; this.ema = null;
-        }
-        this.lastSeen = t;
-        this.streak += 1;
-        if (this.streak < CONFIRM_FRAMES) return null;
-        if (this.ema === null) this.ema = [x, y];
-        else this.ema = [EMA_ALPHA * x + (1 - EMA_ALPHA) * this.ema[0],
-                         EMA_ALPHA * y + (1 - EMA_ALPHA) * this.ema[1]];
-        [x, y] = this.ema;
-        this.pts.push([t, x, y]);
-        this.pts = this.pts.filter((p) => t - p[0] <= WIN_MS);
-        if (this.pts.length < 3) return null;
-        const t0 = this.pts[0][0], x0 = this.pts[0][1], y0 = this.pts[0][2];
-        if (t - t0 < MIN_SPAN_MS) return null;
-        let dx = 0, dy = 0, bestT = t0;
-        for (const [pt, px, py] of this.pts.slice(1)) {
-          if (Math.abs(px - x0) > Math.abs(dx)) { dx = px - x0; bestT = pt; }
-          if (Math.abs(py - y0) > Math.abs(dy)) { dy = py - y0; bestT = pt; }
-        }
-        if (Math.abs(dx) < MIN_MOVE && Math.abs(dy) < MIN_MOVE) return null;
-        if (t - this.lastFire < COOLDOWN_MS) return null;
-        const peak = Math.max(Math.abs(dx), Math.abs(dy));
-        if (peak / ((bestT - t0) / 1000) < MIN_SPEED) return null;
-        const swipe = Math.abs(dx) > Math.abs(dy)
-          ? (dx > 0 ? "right" : "left")
-          : (dy > 0 ? "down" : "up");
-        this.lastFire = t;
-        this.pts = [];
-        return swipe;
-      }
-    };
+  // ---- zone-based control for Subway Surfers (BlueStacks) ----
+  // Hold a zone to keep sending that command: side = lane change, center-high =
+  // jump, center-low = roll. Center mid height = rest (nothing fires).
+  const SUBWAY_REPEAT_MS = 300;
+  const SUBWAY_ACTIONS = { left: "left", right: "right", up: "jump", down: "duck" };
+  const subway = { zone: "rest", timer: null };
+
+  function subwayZone(x, py) {
+    const z = subway.zone;
+    if (x < Z_LEFT.on || (z === "left" && x < Z_LEFT.off)) return "left";
+    if (x > Z_RIGHT.on || (z === "right" && x > Z_RIGHT.off)) return "right";
+    if (py < Z_UP.on || (z === "up" && py < Z_UP.off)) return "up";
+    if (py > Z_DOWN.on || (z === "down" && py > Z_DOWN.off)) return "down";
+    return "rest";
   }
-  const tracker = makeTracker();
+
+  function subwayFire(zone) {
+    Arcade.api("/api/action", { game: "subway", action: SUBWAY_ACTIONS[zone] })
+      .then((res) => {
+        const last = $("lastSent");
+        if (last) {
+          last.textContent = (res && res.ok)
+            ? (zone.toUpperCase() + " SENT to game")
+            : "send failed: " + ((res && res.error) || "no response");
+        }
+      })
+      .catch(() => { const last = $("lastSent"); if (last) last.textContent = "send failed: network error"; });
+  }
+
+  function stopSubway() {
+    if (subway.timer) { clearInterval(subway.timer); subway.timer = null; }
+    subway.zone = "rest";
+  }
 
   // ---- position-based (joystick) control for Level Devil ----
   // Side zones: far left/right edges move; the CENTER is neutral (stop).
-  // Within a side, hand height splits the zone: bottom->mid = direction only,
-  // mid->up = direction + jump (Space tapped repeatedly while held).
-  const JOY_L_ON = 0.24, JOY_L_OFF = 0.45;
-  const JOY_R_ON = 0.76, JOY_R_OFF = 0.55;
-  const JUMP_ON = 0.42, JUMP_OFF = 0.50;
+  // Within a side, hand height splits the zone: natural height = direction
+  // only, raised clearly = direction + jump (Space tapped repeatedly).
   const JUMP_REPEAT_MS = 280;
   const joy = { left: false, right: false, jump: false, repeat: false };
   let jumpTimer = null;
@@ -120,6 +99,7 @@ const HandRunner = (() => {
 
   function releaseKeys() {
     stopJumpRepeat();
+    stopSubway();
     for (const k of ["left", "right", "jump"]) {
       if (joy[k]) sendKey(k, "up");
       joy[k] = false;
@@ -273,13 +253,10 @@ const HandRunner = (() => {
     }
   }
 
-  const JOYSTICK_GAMES = new Set(["leveldevil"]);
-
   function onHand(results) {
     if (phase !== "playing") return;
     const hudMove = $("hudMove");
     const hudConf = $("hudConf");
-    const last = $("lastSent");
     const hands = results.landmarks || [];
     const scores = results.handedness || [];
     let best = -1, bestScore = 0;
@@ -291,8 +268,7 @@ const HandRunner = (() => {
       if (hudMove) hudMove.textContent = "NO HAND";
       if (hudConf) hudConf.textContent = "move your hand in the camera";
       drawHand(null);
-      if (JOYSTICK_GAMES.has(gameId)) releaseKeys();
-      else tracker.tick(performance.now());
+      releaseKeys();
       return;
     }
     const lm = hands[best];
@@ -301,23 +277,23 @@ const HandRunner = (() => {
     const [px, py] = palmCenter(lm);
     const now = performance.now();
 
-    if (JOYSTICK_GAMES.has(gameId)) {
+    if (gameId === "leveldevil") {
       const x = 1 - px;  // mirrored to match the preview
       if (joy.left) {
-        if (x > JOY_L_OFF) { sendKey("left", "up"); joy.left = false; }
-      } else if (x < JOY_L_ON) {
+        if (x > Z_LEFT.off) { sendKey("left", "up"); joy.left = false; }
+      } else if (x < Z_LEFT.on) {
         sendKey("left", "down"); joy.left = true;
       }
       if (joy.right) {
-        if (x < JOY_R_OFF) { sendKey("right", "up"); joy.right = false; }
-      } else if (x > JOY_R_ON) {
+        if (x < Z_RIGHT.off) { sendKey("right", "up"); joy.right = false; }
+      } else if (x > Z_RIGHT.on) {
         sendKey("right", "down"); joy.right = true;
       }
       // Height within the active side: raise the hand clearly above the
       // shoulder/head level to also jump (taps Space repeatedly while held).
       const onSide = joy.left || joy.right;
       if (onSide) {
-        const wantJump = joy.jump ? py < JUMP_OFF : py < JUMP_ON;
+        const wantJump = joy.jump ? py < Z_UP.off : py < Z_UP.on;
         if (wantJump && !joy.jump) {
           joy.jump = true;
           joy.repeat = false;
@@ -331,7 +307,7 @@ const HandRunner = (() => {
       } else {
         // Center: raised hand = plain jump hold (no direction).
         stopJumpRepeat();
-        const wantJump = joy.jump ? py < JUMP_OFF : py < JUMP_ON;
+        const wantJump = joy.jump ? py < Z_UP.off : py < Z_UP.on;
         if (wantJump !== joy.jump) {
           sendKey("jump", wantJump ? "down" : "up");
           joy.jump = wantJump;
@@ -349,21 +325,23 @@ const HandRunner = (() => {
       return;
     }
 
-    const swipe = tracker.update(1 - px, py, now);
-    if (swipe && SWIPE_ACTIONS[swipe]) {
-      const label = SWIPE_LABELS[swipe];
-      if (hudMove) hudMove.textContent = label;
-      Arcade.api("/api/action", { game: gameId, action: SWIPE_ACTIONS[swipe] })
-        .then((res) => {
-          if (last) {
-            last.textContent = (res && res.ok)
-              ? label + " SENT to game"
-              : "send failed: " + ((res && res.error) || "no response");
-          }
-        })
-        .catch(() => { if (last) last.textContent = "send failed: network error"; });
-    } else if (hudMove) {
-      hudMove.textContent = "READY — swipe your hand";
+    // Subway Surfers: hold a zone to keep sending that command. Center mid
+    // height (rest) is neutral, so lowering your hand from up never rolls.
+    const sx = 1 - px;
+    const zone = subwayZone(sx, py);
+    if (zone !== subway.zone) {
+      stopSubway();
+      subway.zone = zone;
+      if (zone !== "rest") {
+        subwayFire(zone);
+        subway.timer = setInterval(() => subwayFire(zone), SUBWAY_REPEAT_MS);
+      }
+    }
+    if (hudMove) {
+      const label = zone === "rest" ? "CENTER" :
+        zone === "up" ? "UP (jump)" :
+        zone === "down" ? "DOWN (roll)" : zone.toUpperCase();
+      hudMove.textContent = label;
     }
   }
 
@@ -380,7 +358,6 @@ const HandRunner = (() => {
 
   function stopLoop() {
     cancelAnimationFrame(rafId);
-    tracker.reset();
     releaseKeys();
   }
 

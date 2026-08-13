@@ -28,7 +28,7 @@ one of three flows:
 
 ### 1. Real games in BlueStacks (Subway Surfers, Temple Run, RPS / Simon / Finger Math)
 
-1. On the game page click **Start hand-swipe control** (Subway/Temple Run) or
+1. On the game page click **Start hand-zone control** (Subway/Temple Run) or
    **Real game · BlueStacks** (RPS / Simon / Finger Math).
 2. Allow camera access when prompted.
 3. First time: the arcade auto-installs BlueStacks, enables + connects ADB,
@@ -36,7 +36,7 @@ one of three flows:
    run takes a few minutes and the status line shows progress.
 4. When it says **"Real game launched"**, alt-tab to the BlueStacks window — the
    game is running there. The browser page stays open as your controller.
-5. Swipe your hand to play (see Controls).
+5. Hold your hand in a zone to play (see Controls).
 
 ### 2. Browser games (RPS, Finger Math, Simon Says)
 
@@ -52,12 +52,8 @@ one of three flows:
 
 1. Click **Start**. The game loads in a panel and in its own window.
 2. **Click inside the game panel once** so it has keyboard focus — your hand
-   swipes then send arrow keys / Space to the game.
-3. Swipe left / right to move, swipe up to jump.
-
-**Swipe tip:** make quick, deliberate hand swipes in the direction you want
-(like swiping on a phone screen), and bring your hand back to center between
-swipes. Swipes are edge-triggered — each one fires a single command.
+   position then drives arrow keys / Space to the game.
+3. Move your hand to the left/right edge to run; raise it to jump; center = stop.
 
 ## Games
 
@@ -66,35 +62,35 @@ the controller, so you never touch a keyboard, mouse, or screen.
 
 | Game | Control | Target |
 |---|---|---|
-| Subway Surfers | Hand swipes | Real game in BlueStacks |
-| Temple Run | Hand swipes | Real game in BlueStacks |
+| Subway Surfers | Hand zones (hold to repeat) | Real game in BlueStacks |
+| Temple Run | Hand zones (hold to repeat) | Real game in BlueStacks |
 | Rock Paper Scissors | Hand gestures | Browser or real game in BlueStacks |
 | Finger Math | Finger count (0–5) | Browser or real game in BlueStacks |
 | Simon Says | Hand gestures | Browser or real game in BlueStacks |
-| Level Devil | Hand swipes | Browser game via keyboard bridge |
+| Level Devil | Hand zones (hold to repeat) | Browser game via keyboard bridge |
 
-### Hand-swipe controls (Subway Surfers, Temple Run, Level Devil)
+### Hand-zone controls (Subway Surfers, Temple Run, Level Devil)
 
-Control games by moving your hand:
+Control games by holding your hand in a zone:
 
-| Gesture | Subway Surfers | Temple Run | Level Devil |
+| Zone | Subway Surfers | Temple Run | Level Devil |
 |---|---|---|---|
-| Swipe hand left | Swipe left | Turn left | Move left (←) |
-| Swipe hand right | Swipe right | Turn right | Move right (→) |
-| Swipe hand up | Jump | Jump | Jump (Space) |
-| Swipe hand down | Roll | Slide | — (ignored) |
+| Hand left side | Lane left | Turn left | Move left (←) |
+| Hand right side | Lane right | Turn right | Move right (→) |
+| Hand high in center | Jump | Jump | Jump (Space) |
+| Hand low in center | Roll | Slide | — (ignored) |
+| Hand mid-center | Rest — nothing fires | Rest | Stop |
 
 How it works:
 
-1. **Swipe, don't hold** — make a quick, deliberate motion in the direction you
-   want (like swiping on a phone screen). Each swipe fires one command.
-2. **Reset between swipes** — bring your hand back toward center before the next
-   swipe so movements don't merge.
-3. For Subway/Temple Run the command becomes an ADB swipe on the BlueStacks
+1. **Hold, don't swipe** — keep your hand in a zone and the command repeats
+   (~300 ms); move to the center to stop. Lowering your hand from up only
+   returns to rest — it never fires the down command.
+2. Zones use hysteresis, so the hand can rest near a boundary without
+   flickering commands.
+3. For Subway/Temple Run each repeat becomes an ADB swipe on the BlueStacks
    screen (90 ms swipe); for Level Devil it becomes a keyboard press — click
    inside the game panel once so it has focus.
-4. Swipe detection is edge-triggered with a ~0.6 s cooldown — a sustained held
-   hand will never repeat a command.
 
 ### Hand-gesture controls (RPS, Simon, Finger Math)
 
