@@ -2,15 +2,14 @@
 setlocal
 cd /d "%~dp0.."
 
-set PY=E:\SoftComputing\sketch-matcher-pi\sketch_matcher_env\Scripts\python.exe
-if not exist "%PY%" set PY=python
+set PY=python
 
-echo Stopping old servers on port 8123...
-powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8123 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
+echo Stopping old servers on port 8080...
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
 
-echo Starting Neon Arcade (wait ~15s for model load)...
-start "Neon Arcade Server" /MIN "%PY%" src\server.py --port 8123
+echo Starting Neon Arcade...
+start "Neon Arcade Server" /MIN "%PY%" src\server.py --port 8080
 
-timeout /t 15 /nobreak >nul
-start http://127.0.0.1:8123
-echo Open http://127.0.0.1:8123 if browser did not launch.
+timeout /t 3 /nobreak >nul
+start http://localhost:8080
+echo Open http://localhost:8080 if browser did not launch.

@@ -21,44 +21,35 @@ const HandRunner = (() => {
   const Z_UP = { on: 0.42, off: 0.50 };
   const Z_DOWN = { on: 0.62, off: 0.55 };
 
-  // ---- swipe-based control for Subway Surfers (poki.com web) ----
-  // The index fingertip is tracked; a quick flick fires one arrow key. A swipe
-  // only counts when it starts from the neutral center zone, so returning your
-  // hand to center after an up swipe never fires the down (roll) command.
-  const SWIPE_MIN_MOVE = 0.14, SWIPE_MAX_MS = 400, SWIPE_COOLDOWN_MS = 250;
-  const NEUTRAL = { x0: 0.30, x1: 0.70, y0: 0.30, y1: 0.70 };
+  // ---- index-finger joystick for Subway Surfers (poki.com web) ----
+  // Keep the hand still and steer with the index finger. The fingertip's
+  // resting spot is tracked as the center; moving the fingertip clear of the
+  // center fires that direction's key once, and returning to center re-arms.
+  const JOY_DEADZONE = 0.07, JOY_REARM_MS = 60;
   const SUBWAY_KEYS = { left: "left", right: "right", up: "up", down: "down" };
-  const sw = { anchor: null, locked: false, lastFire: -1e9 };
+  const jz = { cx: 0.5, cy: 0.5, armed: true, lastFire: -1e9 };
 
   function swReset() {
-    sw.anchor = null;
-    sw.locked = false;
+    jz.armed = true;
   }
 
-  function subwaySwipe(fx, fy, t) {
-    const inNeutral = fx > NEUTRAL.x0 && fx < NEUTRAL.x1 &&
-                      fy > NEUTRAL.y0 && fy < NEUTRAL.y1;
-    if (sw.locked && inNeutral) {
-      sw.locked = false;
-      sw.anchor = { x: fx, y: fy, t };
-      return null;
-    }
-    if (inNeutral) {
-      sw.anchor = { x: fx, y: fy, t };
-      return null;
-    }
-    if (sw.locked || !sw.anchor) return null;
-    if (t - sw.anchor.t > SWIPE_MAX_MS) return null;
-    if (t - sw.lastFire < SWIPE_COOLDOWN_MS) return null;
-    const dx = fx - sw.anchor.x, dy = fy - sw.anchor.y;
+  function subwayJoystick(fx, fy, t) {
+    jz.cx += 0.05 * (fx - jz.cx);
+    jz.cy += 0.05 * (fy - jz.cy);
+    const dx = fx - jz.cx, dy = fy - jz.cy;
     const adx = Math.abs(dx), ady = Math.abs(dy);
-    if (Math.max(adx, ady) < SWIPE_MIN_MOVE) return null;
-    sw.locked = true;
-    sw.lastFire = t;
-    if (adx > ady * 1.3) return dx > 0 ? "right" : "left";
-    if (ady > adx * 1.3) return dy > 0 ? "down" : "up";
-    sw.locked = false;
-    return null;
+    if (adx < JOY_DEADZONE && ady < JOY_DEADZONE) {
+      jz.armed = true;
+      return null;
+    }
+    if (!jz.armed || t - jz.lastFire < JOY_REARM_MS) return null;
+    let dir = null;
+    if (adx > ady * 1.2) dir = dx > 0 ? "right" : "left";
+    else if (ady > adx * 1.2) dir = dy > 0 ? "down" : "up";
+    if (!dir) return null;
+    jz.armed = false;
+    jz.lastFire = t;
+    return dir;
   }
 
   function subwayTap(zone) {
@@ -165,48 +156,13 @@ const HandRunner = (() => {
     if (el) el.textContent = msg;
   }
 
-  async function refresh() {
-    try {
-      const st = await Arcade.status();
-      setStep(st.message || "Checking…");
-      if (st.connected) setStatus("Connected — play in BlueStacks window", "ok");
-      else if (st.bluestacks_running) setStatus("BlueStacks running — connect ADB", "warn");
-      else if (st.bluestacks_installed) setStatus("Starting BlueStacks…", "warn");
-      else setStatus("Installing BlueStacks automatically…", "warn");
-      return st;
-    } catch (_) {
-      setStatus("Server offline", "err");
-      return null;
-    }
-  }
-
-  async function startBlueStacks() {
-    setStatus("Starting BlueStacks…", "warn");
-    const r = await Arcade.api("/api/bluestacks/start", {});
-    await refresh();
-    setStatus(r.ok ? "BlueStacks starting…" : (r.error || "Failed"), r.ok ? "warn" : "err");
-    return r;
-  }
-
-  async function connect() {
-    setStatus("Connecting ADB…", "warn");
-    const r = await Arcade.api("/api/connect", {});
-    await refresh();
-    setStatus(r.ok ? "Emulator connected" : (r.error || "Failed"), r.ok ? "ok" : "err");
-    return r;
-  }
-
   async function prepare(id) {
-    setStatus("Preparing real game (auto setup)…", "warn");
-    setStep("Installing/connecting BlueStacks, loading game — first run may take several minutes…");
+    setStatus("Opening game…", "warn");
     const r = await Arcade.api("/api/prepare", { game: id });
-    await refresh();
     if (r.ok) {
-      setStatus("Real game launched — switch to BlueStacks window", "ok");
-      setStep("Play in the BlueStacks window. Hand swipes here send game swipes.");
+      setStatus("Game launched — click inside it once, then steer", "ok");
     } else {
-      setStatus(r.error || "Setup failed", "err");
-      setStep(r.error || "See steps below");
+      setStatus(r.error || "Launch failed", "err");
     }
     return r;
   }
@@ -248,6 +204,20 @@ const HandRunner = (() => {
     pctx.beginPath();
     pctx.arc((1 - px) * W, py * H, 5, 0, Math.PI * 2);
     pctx.fill();
+    const fx = (1 - landmarks[8].x) * W, fy = landmarks[8].y * H;
+    pctx.fillStyle = "#00e5ff";
+    pctx.beginPath();
+    pctx.arc(fx, fy, 4, 0, Math.PI * 2);
+    pctx.fill();
+    if (gameId === "subway") {
+      const cx = (1 - jz.cx) * W, cy = jz.cy * H;
+      pctx.strokeStyle = "rgba(255,255,255,0.9)";
+      pctx.lineWidth = 1.5;
+      pctx.beginPath();
+      pctx.moveTo(cx - 14, cy); pctx.lineTo(cx + 14, cy);
+      pctx.moveTo(cx, cy - 14); pctx.lineTo(cx, cy + 14);
+      pctx.stroke();
+    }
   }
 
   async function initModel() {
@@ -297,6 +267,7 @@ const HandRunner = (() => {
 
     if (gameId === "leveldevil") {
       const x = 1 - px;  // mirrored to match the preview
+      const pyF = 1 - py;  // vertical mirror: this webcam feed arrives y-flipped
       if (joy.left) {
         if (x > Z_LEFT.off) { sendKey("left", "up"); joy.left = false; }
       } else if (x < Z_LEFT.on) {
@@ -311,7 +282,7 @@ const HandRunner = (() => {
       // shoulder/head level to also jump (taps Space repeatedly while held).
       const onSide = joy.left || joy.right;
       if (onSide) {
-        const wantJump = joy.jump ? py < Z_UP.off : py < Z_UP.on;
+        const wantJump = joy.jump ? pyF < Z_UP.off : pyF < Z_UP.on;
         if (wantJump && !joy.jump) {
           joy.jump = true;
           joy.repeat = false;
@@ -325,7 +296,7 @@ const HandRunner = (() => {
       } else {
         // Center: raised hand = plain jump hold (no direction).
         stopJumpRepeat();
-        const wantJump = joy.jump ? py < Z_UP.off : py < Z_UP.on;
+        const wantJump = joy.jump ? pyF < Z_UP.off : pyF < Z_UP.on;
         if (wantJump !== joy.jump) {
           sendKey("jump", wantJump ? "down" : "up");
           joy.jump = wantJump;
@@ -343,16 +314,15 @@ const HandRunner = (() => {
       return;
     }
 
-    // Subway Surfers (poki.com web): flick the index finger to send an arrow
-    // key. Flicks only fire from the center, so lowering your hand back to
-    // center never triggers roll.
+    // Subway Surfers (poki.com web): steer with the index fingertip. Its rest
+    // spot is the center; moving it clear of the center fires an arrow key.
     const fx = 1 - lm[8].x;  // mirrored index fingertip
-    const swipe = subwaySwipe(fx, lm[8].y, now);
-    if (swipe) subwayTap(swipe);
+    const move = subwayJoystick(fx, 1 - lm[8].y, now);
+    if (move) subwayTap(move);
     if (hudMove) {
-      hudMove.textContent = sw.locked
-        ? (swipe ? swipe.toUpperCase() + " SENT" : "return to center")
-        : "flick to move";
+      hudMove.textContent = !jz.armed
+        ? (move ? move.toUpperCase() + " SENT" : "return index to center")
+        : "move index";
     }
   }
 
@@ -419,12 +389,8 @@ const HandRunner = (() => {
     $("startBtn").addEventListener("click", () => { Sfx.start(); startSession(id); });
     $("retryBtn").addEventListener("click", () => location.reload());
     if ($("reloadBtn")) $("reloadBtn").addEventListener("click", () => location.reload());
-    if ($("bsBtn")) $("bsBtn").addEventListener("click", startBlueStacks);
-    if ($("connectBtn")) $("connectBtn").addEventListener("click", connect);
     if ($("launchBtn")) $("launchBtn").addEventListener("click", () => prepare(id));
-    refresh();
-    setInterval(refresh, 10000);
   }
 
-  return { bind, refresh, prepare, stopClassify: stopLoop };
+  return { bind, prepare, stopClassify: stopLoop };
 })();

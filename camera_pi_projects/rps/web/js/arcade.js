@@ -1,6 +1,12 @@
 /* Shared Neon Arcade utilities — camera, UI states, API helpers. */
 "use strict";
 
+if (location.hostname === "127.0.0.1" || location.hostname === "0.0.0.0" || location.hostname === "localhost") {
+  if (location.hostname !== "localhost") {
+    location.replace("http://localhost:" + location.port + location.pathname + location.search);
+  }
+}
+
 const Arcade = (() => {
   const $ = (id) => document.getElementById(id);
 

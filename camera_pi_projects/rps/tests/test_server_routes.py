@@ -25,6 +25,15 @@ def fetch(url):
         return r.status, r.read(), r.headers.get("Content-Type", "")
 
 
+def post_json(url, payload):
+    req = urllib.request.Request(
+        url, data=json.dumps(payload).encode("utf-8"), method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return r.status, json.loads(r.read().decode("utf-8"))
+
+
 def main():
     port = 8765
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
@@ -41,14 +50,21 @@ def main():
         except Exception as e:
             fails.append(f"{path} -> {e}")
 
-    bridge = get_bridge()
-    for game, action in [("subway", "left"), ("leveldevil", "jump")]:
-        try:
-            data = bridge.dispatch(game, action)
-            if "ok" not in data:
-                fails.append(f"dispatch {game}/{action} missing ok field")
-        except Exception as e:
-            fails.append(f"dispatch {game}/{action} -> {e}")
+    code, data = post_json(base + "/api/key", {"game": "leveldevil", "key": "left", "state": "tap"})
+    if code != 200 or not data.get("ok"):
+        fails.append(f"/api/key leveldevil -> {data}")
+
+    code, data = post_json(base + "/api/key", {"game": "subway", "key": "up", "state": "down"})
+    if code != 200 or not data.get("ok"):
+        fails.append(f"/api/key subway -> {data}")
+
+    code, data = post_json(base + "/api/key", {"game": "subway", "key": "bogus", "state": "tap"})
+    if code != 200 or data.get("ok"):
+        fails.append(f"/api/key bogus key should fail -> {data}")
+
+    code, data = post_json(base + "/api/prepare", {"game": "leveldevil"})
+    if code != 200 or "ok" not in data:
+        fails.append(f"/api/prepare leveldevil -> {data}")
 
     httpd.shutdown()
     if fails:
@@ -56,7 +72,7 @@ def main():
         for f in fails:
             print(" ", f)
         sys.exit(1)
-    print(f"OK: {len(ROUTES)} routes + /api/action (subway, leveldevil)")
+    print(f"OK: {len(ROUTES)} routes + /api/key + /api/prepare")
 
 
 if __name__ == "__main__":

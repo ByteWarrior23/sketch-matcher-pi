@@ -1,8 +1,8 @@
-"""Hand-gesture arcade web server — stdlib HTTP + game input bridge.
+"""Hand-gesture arcade web server — stdlib HTTP + keyboard input bridge.
 
-Serves the static frontend and the input bridge API. Hand detection runs in
-the browser (MediaPipe HandLandmarker); the server only receives the final
-game action (swipe / key hold / key tap).
+Serves the static frontend and the input API. Hand detection runs in the
+browser (MediaPipe HandLandmarker); the server presses the keys for the
+focused game window.
 """
 import argparse
 import json
@@ -101,38 +101,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split("?")[0]
-        if path == "/api/action":
-            self._post_action()
-            return
         if path == "/api/key":
             self._post_key()
-            return
-        if path == "/api/launch":
-            self._post_launch()
-            return
-        if path == "/api/connect":
-            self._post_connect()
-            return
-        if path == "/api/bluestacks/start":
-            self._post_bluestacks_start()
             return
         if path == "/api/prepare":
             self._post_prepare()
             return
-        if path == "/api/setup":
-            self._post_setup()
-            return
         self._send(404, "not found", "text/plain")
-
-    def _post_action(self):
-        try:
-            data = self._read_json()
-            game = str(data.get("game", "")).lower()
-            action = str(data.get("action", "")).lower()
-            result = get_bridge().dispatch(game, action)
-            self._json(200, result)
-        except Exception as e:
-            self._json(500, {"ok": False, "error": str(e)})
 
     def _post_key(self):
         try:
@@ -141,29 +116,6 @@ class Handler(BaseHTTPRequestHandler):
             key = str(data.get("key", "")).lower()
             state = str(data.get("state", "")).lower()
             result = get_bridge().keyboard_state(game, key, state)
-            self._json(200, result)
-        except Exception as e:
-            self._json(500, {"ok": False, "error": str(e)})
-
-    def _post_launch(self):
-        try:
-            data = self._read_json()
-            game = str(data.get("game", "")).lower()
-            result = get_bridge().launch(game)
-            self._json(200, result)
-        except Exception as e:
-            self._json(500, {"ok": False, "error": str(e)})
-
-    def _post_connect(self):
-        try:
-            result = get_bridge().connect_adb()
-            self._json(200, result)
-        except Exception as e:
-            self._json(500, {"ok": False, "error": str(e)})
-
-    def _post_bluestacks_start(self):
-        try:
-            result = get_bridge().start_bluestacks()
             self._json(200, result)
         except Exception as e:
             self._json(500, {"ok": False, "error": str(e)})
@@ -177,26 +129,13 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             self._json(500, {"ok": False, "error": str(e)})
 
-    def _post_setup(self):
-        try:
-            from arcade_setup import full_setup  # noqa: WPS433
-            data = self._read_json() if int(self.headers.get("Content-Length", 0)) else {}
-            games = data.get("games") or ["subway"]
-            result = full_setup(games=games)
-            self._json(200, result)
-        except Exception as e:
-            self._json(500, {"ok": False, "error": str(e)})
-
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, default=8123)
+    ap.add_argument("--port", type=int, default=8080)
     args = ap.parse_args()
 
-    bridge = get_bridge()
-    st = bridge.status()
-    print(f"adb: {st.get('adb_path', 'missing')} connected={st.get('connected')} — {st.get('message')}")
-    print(f"Arcade on http://127.0.0.1:{args.port}")
+    print(f"Arcade on http://localhost:{args.port}")
     ThreadingHTTPServer(("0.0.0.0", args.port), Handler).serve_forever()
 
 

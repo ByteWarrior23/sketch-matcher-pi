@@ -23,7 +23,7 @@
       </div>
       <div id="landing" class="landing-panel">
         <h2>Subway Surfers</h2>
-        <p>Control the game with index-finger swipes. Click the game once so keyboard controls work.</p>
+        <p>Keep your hand still and steer with your index finger. Click the game once so keyboard controls work.</p>
         <button id="startBtn" class="btn btn-primary">Start game</button>
       </div>
       <div id="loading" class="landing-panel hidden">
@@ -46,14 +46,14 @@
         <iframe id="gameFrame" src="about:blank" title="Subway Surfers" allow="fullscreen"></iframe>
       </div>
       <div class="control-grid">
-        <div class="control-item"><kbd>Flick finger left</kbd><span>← lane left</span></div>
-        <div class="control-item"><kbd>Flick finger right</kbd><span>→ lane right</span></div>
-        <div class="control-item"><kbd>Flick finger up</kbd><span>↑ jump</span></div>
-        <div class="control-item"><kbd>Flick finger down</kbd><span>↓ roll</span></div>
-        <div class="control-item"><kbd>Hand in center</kbd><span>Reset between flicks</span></div>
+        <div class="control-item"><kbd>Index left</kbd><span>← lane left</span></div>
+        <div class="control-item"><kbd>Index right</kbd><span>→ lane right</span></div>
+        <div class="control-item"><kbd>Index up</kbd><span>↑ jump</span></div>
+        <div class="control-item"><kbd>Index down</kbd><span>↓ roll</span></div>
+        <div class="control-item"><kbd>Index to center</kbd><span>Re-arm between moves</span></div>
         <div class="control-item"><kbd>Last sent</kbd><span id="lastSent">—</span></div>
       </div>
-      <p class="hint">After starting, click inside the game so keyboard controls reach Subway Surfers. Flick your index finger in a direction for a lane change, jump, or roll — then return your hand to the center for the next flick. Lowering your hand back down never rolls.</p>
+      <p class="hint">Start opens the real game at poki.com on the right half of your screen. Keep this camera window visible on the left. Click once inside the game, then keep your hand still and steer with your index finger — the white crosshair on the preview is the center. Move the index away from it to jump, roll, or change lanes, then return it to center for the next move.</p>
     </section>
   </main>
 
@@ -65,6 +65,9 @@
     document.getElementById("startBtn").addEventListener("click", function () {
       document.getElementById("gameFrame").src = "https://poki.com/en/g/subway-surfers";
     });
+    if (new URLSearchParams(location.search).has("start")) {
+      document.getElementById("gameFrame").src = "https://poki.com/en/g/subway-surfers";
+    }
   </script>
 </body>
 </html>
