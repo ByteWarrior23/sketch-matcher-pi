@@ -43,3 +43,8 @@ sketch_matcher_colab_gemini.ipynb
 /camera_pi_projects/rps/tests/**/*.png
 /camera_pi_projects/rps/tests/**/*.jpg
 /camera_pi_projects/rps/pi_deploy/model_data/
+
+# Arcade large binaries (downloaded at runtime)
+/camera_pi_projects/rps/tools/apks/
+/camera_pi_projects/rps/tools/BlueStacksFullInstaller.exe
+/hand-gesture-arcade/

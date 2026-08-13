@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Level Devil — Neon Arcade</title>
+<link rel="stylesheet" href="../css/style.css?v=11">
+</head>
+<body class="game-body body-layout">
+  <header class="game-top">
+    <a class="back-link" href="../index.html">Back to Arcade</a>
+    <div class="game-title"><b>Level Devil</b></div>
+    <span class="badge">Keyboard · Gesture</span>
+  </header>
+
+  <main class="game-main">
+    <section class="cam-strip">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="preview" width="320" height="240" style="display:none"></canvas>
+      <div id="hud" class="cam-hud hidden">
+        <span id="hudMove" class="move-badge">READY</span>
+        <span id="hudConf" class="conf">waiting</span>
+      </div>
+      <div id="landing" class="landing-panel">
+        <h2>Level Devil</h2>
+        <p>Control the game with your hand position. Click the game once so keyboard controls work.</p>
+        <button id="startBtn" class="btn btn-primary">Start game</button>
+      </div>
+      <div id="loading" class="landing-panel hidden">
+        <h2>Starting…</h2>
+        <div class="loading-bar"><span></span></div>
+      </div>
+      <div id="camError" class="error-panel hidden">
+        <h3>Camera unavailable</h3>
+        <p>Allow camera access and close other apps using the webcam.</p>
+        <button id="retryBtn" class="btn btn-ghost">Retry</button>
+      </div>
+    </section>
+
+    <section id="playPanel" class="game-panel game-panel-play">
+      <div class="panel-head">
+        <div class="panel-title">Level Devil</div>
+        <span id="statusMsg" class="eq-state">Ready</span>
+      </div>
+      <div class="game-frame-wrap">
+        <iframe id="gameFrame" src="about:blank" title="Level Devil" allow="fullscreen"></iframe>
+      </div>
+      <div class="control-grid">
+        <div class="control-item"><kbd>Left/right side (hand at natural height)</kbd><span>Run that direction</span></div>
+        <div class="control-item"><kbd>Side + hand raised up high</kbd><span>Run + keep jumping (repeats)</span></div>
+        <div class="control-item"><kbd>Center + hand raised up high</kbd><span>Jump in place (hold)</span></div>
+        <div class="control-item"><kbd>Center, hand low</kbd><span>Stop — neutral</span></div>
+        <div class="control-item"><kbd>Tap index finger twice</kbd><span>Click (Space)</span></div>
+        <div class="control-item"><kbd>Last sent</kbd><span id="lastSent">—</span></div>
+      </div>
+      <p class="hint">After starting, click inside the game panel so keyboard controls reach Level Devil. Move your hand to the left/right edge to run; center with your hand low = stop. Raise your hand high to jump — in the center it's a jump hold, while on a side it keeps jumping as you run.</p>
+    </section>
+  </main>
+
+  <script src="../js/audio.js?v=11"></script>
+  <script src="../js/arcade.js?v=11"></script>
+  <script src="../js/hand-runner-bridge.js?v=11"></script>
+  <script>
+    HandRunner.bind("leveldevil");
+    document.getElementById("startBtn").addEventListener("click", function () {
+      document.getElementById("gameFrame").src = "https://level-devil.org/en/";
+    });
+  </script>
+</body>
+</html>

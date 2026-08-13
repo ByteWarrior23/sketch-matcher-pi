@@ -1,58 +1,45 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Neon Arcade — Play with Your Hands</title>
-<link rel="stylesheet" href="css/style.css">
+<title>Neon Arcade</title>
+<link rel="stylesheet" href="css/style.css?v=11">
 </head>
 <body class="hub-body">
-  <div class="bg-orb orb-a"></div>
-  <div class="bg-orb orb-b"></div>
-  <div class="bg-orb orb-c"></div>
-
   <header class="hub-head">
-    <div class="hub-logo">
-      <span class="logo-dot"></span>
-      <span>NEON <b>ARCADE</b></span>
-    </div>
-    <span class="hub-sub">pick your game</span>
+    <div class="hub-logo"><span class="logo-mark"></span>NEON ARCADE</div>
+    <span class="hub-sub">Vision-controlled games</span>
   </header>
 
   <main class="hub-main">
     <div class="hub-hero">
-      <h1 class="hub-title">Play with your <span class="grad-text">hands</span>.</h1>
-      <p class="hub-desc">AI-powered arcade games that watch you play. No controller, no keyboard — just you.</p>
+      <h1 class="hub-title">Play with your <span class="accent">body and hands</span></h1>
+      <p class="hub-desc">Open and play â€” BlueStacks and games install automatically on first run.</p>
     </div>
 
     <section class="game-grid">
-      <a class="game-card g-rps" href="rps.html">
-        <div class="card-glow"></div>
-        <div class="card-art">✊ ✋ ✌️</div>
+      <a class="game-card" href="games/subway.html">
+        <span class="card-tag tag-external">Keyboard Â· Gesture Â· Real game</span>
         <div class="card-info">
-          <h2>Rock Paper Scissors</h2>
-          <p>Face the Machine with your camera — best of 5 rounds wins the duel.</p>
+          <h2>Subway Surfers</h2>
+          <p>Real game in BlueStacks. Hand swipes send swipe up/left/right via ADB â€” or use the arrow keys directly.</p>
         </div>
-        <div class="card-cta">
-          <span>Play Now</span><span class="arrow">→</span>
-        </div>
+        <div class="card-cta"><span>Play</span><span class="arrow">&rarr;</span></div>
       </a>
 
-      <a class="game-card g-ttt" href="ttt.html">
-        <div class="card-glow"></div>
-        <div class="card-art">⭕ ❌</div>
+      <a class="game-card" href="games/leveldevil.html">
+        <span class="card-tag tag-hand">Keyboard Â· Gesture</span>
         <div class="card-info">
-          <h2>Tic Tac Toe</h2>
-          <p>Classic 2-player duel. Set the rounds, chase the win streak.</p>
+          <h2>Level Devil</h2>
+          <p>Browser platformer. Move your hand to the left/right edge to run, raise it above mid to keep jumping, center to stop.</p>
         </div>
-        <div class="card-cta">
-          <span>Play Now</span><span class="arrow">→</span>
-        </div>
+        <div class="card-cta"><span>Play</span><span class="arrow">&rarr;</span></div>
       </a>
     </section>
   </main>
 
-  <footer class="hub-foot">Powered by MediaPipe vision · runs on your machine</footer>
-  <script src="js/audio.js"></script>
+  <footer class="hub-foot">MediaPipe vision Â· Python backend Â· localhost only</footer>
+  <script src="js/audio.js?v=11"></script>
 </body>
 </html>
