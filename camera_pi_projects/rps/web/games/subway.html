@@ -52,14 +52,15 @@
         <div class="control-item"><kbd>Index down</kbd><span>↓ roll</span></div>
         <div class="control-item"><kbd>Index to center</kbd><span>Re-arm between moves</span></div>
         <div class="control-item"><kbd>Last sent</kbd><span id="lastSent">—</span></div>
+        <div class="control-item"><kbd>Flip Y</kbd><span><label><input type="checkbox" id="yFlipBtn"> invert up/down</label></span></div>
       </div>
       <p class="hint">Start opens the real game at poki.com on the right half of your screen. Keep this camera window visible on the left. Click once inside the game, then keep your hand still and steer with your index finger — the white crosshair on the preview is the center. Move the index away from it to jump, roll, or change lanes, then return it to center for the next move.</p>
     </section>
   </main>
 
-  <script src="../js/audio.js?v=11"></script>
-  <script src="../js/arcade.js?v=11"></script>
-  <script src="../js/hand-runner-bridge.js?v=11"></script>
+  <script src="../js/audio.js?v=15"></script>
+  <script src="../js/arcade.js?v=15"></script>
+  <script src="../js/hand-runner-bridge.js?v=15"></script>
   <script>
     HandRunner.bind("subway");
     document.getElementById("startBtn").addEventListener("click", function () {

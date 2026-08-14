@@ -16,8 +16,8 @@ const HandRunner = (() => {
   const $ = (id) => document.getElementById(id);
 
   // ---- shared zone thresholds (mirrored frame x) ----
-  const Z_LEFT = { on: 0.24, off: 0.45 };
-  const Z_RIGHT = { on: 0.76, off: 0.55 };
+  const Z_LEFT = { on: 0.32, off: 0.45 };
+  const Z_RIGHT = { on: 0.68, off: 0.55 };
   const Z_UP = { on: 0.42, off: 0.50 };
   const Z_DOWN = { on: 0.62, off: 0.55 };
 
@@ -34,18 +34,21 @@ const HandRunner = (() => {
   }
 
   function subwayJoystick(fx, fy, t) {
-    jz.cx += 0.05 * (fx - jz.cx);
-    jz.cy += 0.05 * (fy - jz.cy);
     const dx = fx - jz.cx, dy = fy - jz.cy;
     const adx = Math.abs(dx), ady = Math.abs(dy);
     if (adx < JOY_DEADZONE && ady < JOY_DEADZONE) {
+      // Idle: re-anchor the center to the finger's resting spot and re-arm.
+      // The center is FROZEN while a move is in progress, so it never drifts
+      // toward the finger mid-move (which caused random double/triple fires).
+      jz.cx += 0.1 * (fx - jz.cx);
+      jz.cy += 0.1 * (fy - jz.cy);
       jz.armed = true;
       return null;
     }
     if (!jz.armed || t - jz.lastFire < JOY_REARM_MS) return null;
     let dir = null;
-    if (adx > ady * 1.2) dir = dx > 0 ? "right" : "left";
-    else if (ady > adx * 1.2) dir = dy > 0 ? "down" : "up";
+    if (adx > ady * 1.5) dir = dx > 0 ? "right" : "left";
+    else if (ady > adx * 1.5) dir = dy > 0 ? "down" : "up";
     if (!dir) return null;
     jz.armed = false;
     jz.lastFire = t;
@@ -267,7 +270,6 @@ const HandRunner = (() => {
 
     if (gameId === "leveldevil") {
       const x = 1 - px;  // mirrored to match the preview
-      const pyF = 1 - py;  // vertical mirror: this webcam feed arrives y-flipped
       if (joy.left) {
         if (x > Z_LEFT.off) { sendKey("left", "up"); joy.left = false; }
       } else if (x < Z_LEFT.on) {
@@ -282,7 +284,7 @@ const HandRunner = (() => {
       // shoulder/head level to also jump (taps Space repeatedly while held).
       const onSide = joy.left || joy.right;
       if (onSide) {
-        const wantJump = joy.jump ? pyF < Z_UP.off : pyF < Z_UP.on;
+        const wantJump = joy.jump ? py < Z_UP.off : py < Z_UP.on;
         if (wantJump && !joy.jump) {
           joy.jump = true;
           joy.repeat = false;
@@ -296,7 +298,7 @@ const HandRunner = (() => {
       } else {
         // Center: raised hand = plain jump hold (no direction).
         stopJumpRepeat();
-        const wantJump = joy.jump ? pyF < Z_UP.off : pyF < Z_UP.on;
+        const wantJump = joy.jump ? py < Z_UP.off : py < Z_UP.on;
         if (wantJump !== joy.jump) {
           sendKey("jump", wantJump ? "down" : "up");
           joy.jump = wantJump;
@@ -317,7 +319,7 @@ const HandRunner = (() => {
     // Subway Surfers (poki.com web): steer with the index fingertip. Its rest
     // spot is the center; moving it clear of the center fires an arrow key.
     const fx = 1 - lm[8].x;  // mirrored index fingertip
-    const move = subwayJoystick(fx, 1 - lm[8].y, now);
+    const move = subwayJoystick(fx, yFlip ? 1 - lm[8].y : lm[8].y, now);
     if (move) subwayTap(move);
     if (hudMove) {
       hudMove.textContent = !jz.armed
@@ -384,12 +386,22 @@ const HandRunner = (() => {
     prepare(id).catch(() => {});
   }
 
+  let yFlip = localStorage.getItem("arcade_yflip2") === "1";
+
   function bind(id) {
     gameId = id;
     $("startBtn").addEventListener("click", () => { Sfx.start(); startSession(id); });
     $("retryBtn").addEventListener("click", () => location.reload());
     if ($("reloadBtn")) $("reloadBtn").addEventListener("click", () => location.reload());
     if ($("launchBtn")) $("launchBtn").addEventListener("click", () => prepare(id));
+    const yBtn = $("yFlipBtn");
+    if (yBtn) {
+      yBtn.checked = yFlip;
+      yBtn.addEventListener("change", () => {
+        yFlip = yBtn.checked;
+        localStorage.setItem("arcade_yflip2", yFlip ? "1" : "0");
+      });
+    }
   }
 
   return { bind, prepare, stopClassify: stopLoop };
