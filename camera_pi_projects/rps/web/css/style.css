@@ -74,6 +74,8 @@ button { font-family: inherit; }
 .body-layout .cam-strip { height: var(--cam-body-h); min-height: 280px; }
 .cam-strip #video { width: 100%; height: 100%; object-fit: cover; object-position: center center; transform: scaleX(-1); background: #0a0f18; }
 .body-layout .cam-strip #video { object-fit: contain; object-position: center center; }
+.cam-strip #camFeed { width: 100%; height: 100%; object-fit: contain; object-position: center center; background: #0a0f18; }
+.panel-actions { display: flex; justify-content: center; gap: 10px; }
 .cam-strip #poseCanvas, .cam-strip #preview { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .cam-strip .overlay { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: rgba(7,11,18,.82); color: var(--text); }
 .overlay-big { font-family: var(--font-display); font-size: 48px; font-weight: 700; color: var(--accent); }
@@ -175,3 +177,5 @@ button { font-family: inherit; }
 .game-canvas-wrap canvas { width: 100%; height: auto; display: block; background: #0a1020; border-radius: var(--radius-md); }
 .scorebar-inline { margin: 0; }
 .game-panel-play { gap: 12px; }
+.screen-map { position: relative; width: 130px; height: 82px; margin: 8px auto 0; border: 1px solid var(--border); border-radius: 6px; background: #0a1020; }
+.screen-map #cursorDot { position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; transform: translate(-50%, -50%); border-radius: 50%; background: #ffd400; box-shadow: 0 0 12px #ffd400; border: 1px solid #000; }

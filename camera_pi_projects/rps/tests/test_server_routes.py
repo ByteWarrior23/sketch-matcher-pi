@@ -14,9 +14,9 @@ from input_bridge import get_bridge  # noqa: E402
 from server import Handler  # noqa: E402
 
 ROUTES = [
-    "/", "/subway", "/leveldevil",
-    "/css/style.css", "/js/arcade.js", "/js/hand-runner-bridge.js",
-    "/health", "/api/status",
+    "/", "/subway", "/leveldevil", "/trackpad",
+    "/css/style.css", "/js/arcade.js", "/js/hand-runner-bridge.js", "/js/trackpad-bridge.js",
+    "/health", "/api/status", "/api/trackpad/status",
 ]
 
 
@@ -66,13 +66,41 @@ def main():
     if code != 200 or "ok" not in data:
         fails.append(f"/api/prepare leveldevil -> {data}")
 
+    code, data = post_json(base + "/api/mouse", {"op": "move", "x": 0.5, "y": 0.5})
+    if code != 200 or not data.get("ok"):
+        fails.append(f"/api/mouse move -> {data}")
+
+    code, data = post_json(base + "/api/mouse", {"op": "click", "times": 1})
+    if code != 200 or not data.get("ok"):
+        fails.append(f"/api/mouse click -> {data}")
+
+    code, data = post_json(base + "/api/mouse", {"op": "click", "times": 1, "button": "right"})
+    if code != 200 or not data.get("ok") or data.get("button") != "right":
+        fails.append(f"/api/mouse right-click -> {data}")
+
+    code, data = post_json(base + "/api/mouse", {"op": "scroll", "lines": 2})
+    if code != 200 or not data.get("ok"):
+        fails.append(f"/api/mouse scroll (plain) -> {data}")
+
+    code, data = post_json(base + "/api/mouse", {"op": "scroll", "lines": 2, "ctrl": True})
+    if code != 200 or not data.get("ok"):
+        fails.append(f"/api/mouse scroll (zoom) -> {data}")
+
+    code, data = post_json(base + "/api/trackpad/config", {"sens": 7})
+    if code != 200 or not data.get("ok"):
+        fails.append(f"/api/trackpad/config -> {data}")
+
+    code, data = post_json(base + "/api/trackpad/stop", {})
+    if code != 200 or not data.get("ok"):
+        fails.append(f"/api/trackpad/stop -> {data}")
+
     httpd.shutdown()
     if fails:
         print("FAIL:")
         for f in fails:
             print(" ", f)
         sys.exit(1)
-    print(f"OK: {len(ROUTES)} routes + /api/key + /api/prepare")
+    print(f"OK: {len(ROUTES)} routes + /api/key + /api/prepare + /api/mouse")
 
 
 if __name__ == "__main__":

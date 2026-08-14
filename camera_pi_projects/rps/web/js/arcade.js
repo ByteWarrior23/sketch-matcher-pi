@@ -37,14 +37,6 @@ const Arcade = (() => {
     stream.getTracks().forEach((t) => t.stop());
   }
 
-  function setPhase(ids, phase) {
-    const map = ids || {};
-    ["landing", "loading", "playing", "error", "camError"].forEach((k) => {
-      const el = map[k] || $(k);
-      if (el) el.classList.toggle("hidden", k !== phase);
-    });
-  }
-
   async function api(path, body) {
     const res = await fetch(path, {
       method: "POST",
@@ -54,16 +46,5 @@ const Arcade = (() => {
     return res.json();
   }
 
-  async function status() {
-    const res = await fetch("/api/status");
-    return res.json();
-  }
-
-  function showLoader(el, msg) {
-    if (!el) return;
-    el.textContent = msg || "Loading…";
-    el.classList.remove("hidden");
-  }
-
-  return { $, startCamera, stopCamera, setPhase, api, status, showLoader };
+  return { $, startCamera, stopCamera, api };
 })();

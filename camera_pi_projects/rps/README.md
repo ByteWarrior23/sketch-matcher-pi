@@ -10,8 +10,8 @@ Everything runs locally — camera frames never leave your machine.
 ## Quick start
 
 1. Install Python requirements: `pip install -r requirements.txt`.
-2. Run the arcade: `python src/server.py --port 8080`.
-3. Open **http://localhost:8080** and pick a game.
+2. Run the arcade: `python src/server.py --port 1234`.
+3. Open **http://localhost:1234** and pick a game.
 
 Games launch in their own Chrome/Edge window; the page becomes your gesture
 controller.
@@ -64,7 +64,7 @@ rps/
 
 Key components:
 
-- **`src/server.py`** — stdlib HTTP server (port 8080). Serves static frontend,
+- **`src/server.py`** — stdlib HTTP server (port 1234). Serves static frontend,
   `/api/status`, `/api/prepare` (launch game window) and `/api/key` (keyboard
   press/hold).
 - **`src/input_bridge.py`** — maps gestures to keyboard keys for the focused

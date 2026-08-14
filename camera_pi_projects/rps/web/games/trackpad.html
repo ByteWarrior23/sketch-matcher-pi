@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Virtual Trackpad — Neon Arcade</title>
+<link rel="stylesheet" href="../css/style.css?v=14">
+</head>
+<body class="game-body body-layout">
+  <header class="game-top">
+    <a class="back-link" href="../index.html">Back to Arcade</a>
+    <div class="game-title"><b>Virtual Trackpad</b></div>
+    <button id="camToggleBtn" class="btn btn-sm btn-ghost">Trackpad OFF</button>
+    <span class="badge">Mouse · Gesture</span>
+  </header>
+
+  <main class="game-main">
+    <section class="cam-strip">
+      <img id="camFeed" alt="Trackpad preview" style="display:none">
+      <div id="hud" class="cam-hud hidden">
+        <span id="hudMove" class="move-badge">READY</span>
+        <span id="hudConf" class="conf">starting backend…</span>
+      </div>
+      <div id="landing" class="landing-panel">
+        <h2>Virtual Trackpad</h2>
+        <p>Your index finger becomes the cursor — run by the server, so it keeps working in <b>any</b> window (Chrome, another website, a game) even when this page is in the background. Open your palm to release and your real trackpad takes over instantly.</p>
+        <button id="startBtn" class="btn btn-primary">Start trackpad</button>
+      </div>
+      <div id="loading" class="landing-panel hidden">
+        <h2>Starting…</h2>
+        <div class="loading-bar"><span></span></div>
+      </div>
+      <div id="camError" class="error-panel hidden">
+        <h3>Camera unavailable</h3>
+        <p>Allow camera access and close other apps using the webcam.</p>
+        <button id="retryBtn" class="btn btn-ghost">Retry</button>
+      </div>
+    </section>
+
+    <section id="playPanel" class="game-panel game-panel-play hidden">
+      <div class="panel-head">
+        <div class="panel-title">Virtual Trackpad</div>
+        <div class="status-line"><span id="statusDot" class="status-dot"></span><span id="statusMsg">Starting…</span></div>
+      </div>
+      <div class="control-grid">
+        <div class="control-item"><kbd>Index finger up</kbd><span>Move the cursor like a real trackpad — slide your hand, the cursor travels the same distance; push toward the edge of the camera view to sweep the whole window</span></div>
+        <div class="control-item"><kbd>Index + middle spread, slide</kbd><span>Scroll up / down</span></div>
+        <div class="control-item"><kbd>Thumb stretched out</kbd><span>Freeze the cursor and enter button mode</span></div>
+        <div class="control-item"><kbd>Curl index (thumb out)</kbd><span>Left-click — fires the instant you curl (two quick curls = double-click)</span></div>
+        <div class="control-item"><kbd>Curl middle (thumb out)</kbd><span>Right-click</span></div>
+        <div class="control-item"><kbd>Open palm</kbd><span>Release — your trackpad is in charge</span></div>
+        <div class="control-item">
+          <kbd>Cursor</kbd>
+          <div class="screen-map"><div id="cursorDot"></div></div>
+        </div>
+        <div class="control-item"><kbd>Last action</kbd><span id="lastAction">—</span></div>
+        <div class="control-item"><kbd>Reset</kbd><span><button id="recenterBtn" class="btn btn-sm btn-ghost">Center cursor</button></span></div>
+      </div>
+      <p class="hint">The server keeps watching this camera and drives the real OS cursor, so you can switch to Chrome or any other window and keep gesturing. The thumb is the mode switch: while it is tucked in, hold your index finger up (other fingers folded) and slide your hand — the cursor slides with it, just like a real trackpad; when you stop, the cursor stops. Push your hand toward the edge of the camera view to sweep a long distance (or reach the taskbar). To scroll, make a peace sign (index + middle spread apart, other fingers down) and slide your hand up or down. To <b>click</b>: stretch your thumb OUT — the cursor freezes and the system knows a click is coming, so it never mistakes a move for a click. Then curl your index fingertip for <b>left-click</b> (fires the moment you curl; two quick curls = double-click) or curl your middle fingertip for <b>right-click</b>. Bring your thumb back in to move again. Open your palm (all fingers up) to release — your real trackpad is always supreme.</p>
+      <div class="panel-actions"><button id="stopBtn" class="btn btn-ghost">Stop trackpad</button></div>
+    </section>
+  </main>
+
+  <script src="../js/audio.js?v=27"></script>
+  <script src="../js/arcade.js?v=27"></script>
+  <script src="../js/trackpad-bridge.js?v=36"></script>
+  <script>
+    Trackpad.bind();
+  </script>
+</body>
+</html>

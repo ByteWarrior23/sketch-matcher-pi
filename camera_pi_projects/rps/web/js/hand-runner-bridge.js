@@ -15,12 +15,6 @@
 const HandRunner = (() => {
   const $ = (id) => document.getElementById(id);
 
-  // ---- shared zone thresholds (mirrored frame x) ----
-  const Z_LEFT = { on: 0.32, off: 0.45 };
-  const Z_RIGHT = { on: 0.68, off: 0.55 };
-  const Z_UP = { on: 0.42, off: 0.50 };
-  const Z_DOWN = { on: 0.62, off: 0.55 };
-
   // ---- index-finger joystick for Subway Surfers (poki.com web) ----
   // Keep the hand still and steer with the index finger. The fingertip's
   // resting spot is tracked as the center; moving the fingertip clear of the
@@ -68,9 +62,13 @@ const HandRunner = (() => {
   }
 
   // ---- position-based (joystick) control for Level Devil ----
-  // Side zones: far left/right edges move; the CENTER is neutral (stop).
-  // Within a side, hand height splits the zone: natural height = direction
-  // only, raised clearly = direction + jump (Space tapped repeatedly).
+  // Whole-hand (palm) position drives the game exactly like the original
+  // working build: far left/right edges run, center stops, and hand height
+  // jumps. The arrow key is HELD while the hand stays in a side zone, so the
+  // character runs at the game's own full speed.
+  const JOY_L_ON = 0.24, JOY_L_OFF = 0.45;
+  const JOY_R_ON = 0.76, JOY_R_OFF = 0.55;
+  const JUMP_ON = 0.42, JUMP_OFF = 0.50;
   const JUMP_REPEAT_MS = 280;
   const joy = { left: false, right: false, jump: false, repeat: false };
   let jumpTimer = null;
@@ -95,18 +93,26 @@ const HandRunner = (() => {
     if (joy.jump) { sendKey("jump", "up"); joy.jump = false; }
   }
 
+  // Key events must reach the server IN ORDER (a "down" must be processed
+  // before its "up"), or the game gets stuck/erratically moving keys. Chain
+  // every POST so each is sent only after the previous one completed.
+  let keyChain = Promise.resolve();
   function sendKey(key, state) {
-    Arcade.api("/api/key", { game: gameId, key, state }).then((res) => {
-      const last = $("lastSent");
-      if (last) {
-        last.textContent = (res && res.ok)
-          ? (key.toUpperCase() + " " + (state === "down" ? "HOLD" : "release"))
-          : "key failed: " + ((res && res.error) || "no response");
-      }
-    }).catch(() => {
-      const last = $("lastSent");
-      if (last) last.textContent = "key failed: network error";
-    });
+    const p = keyChain.then(() =>
+      Arcade.api("/api/key", { game: gameId, key, state }).then((res) => {
+        const last = $("lastSent");
+        if (last) {
+          last.textContent = (res && res.ok)
+            ? (key.toUpperCase() + " " + (state === "down" ? "HOLD" : "release"))
+            : "key failed: " + ((res && res.error) || "no response");
+        }
+      }).catch(() => {
+        const last = $("lastSent");
+        if (last) last.textContent = "key failed: network error";
+      })
+    );
+    keyChain = p.catch(() => {});
+    return p;
   }
 
   function releaseKeys() {
@@ -152,11 +158,6 @@ const HandRunner = (() => {
     const dot = $("statusDot");
     if (el) el.textContent = msg;
     if (dot) dot.className = "status-dot" + (level ? " " + level : "");
-  }
-
-  function setStep(msg) {
-    const el = $("adbStatus");
-    if (el) el.textContent = msg;
   }
 
   async function prepare(id) {
@@ -269,22 +270,25 @@ const HandRunner = (() => {
     const now = performance.now();
 
     if (gameId === "leveldevil") {
-      const x = 1 - px;  // mirrored to match the preview
+      // Whole-hand control (as in the original working build): mirrored palm
+      // x drives left/right, palm height (py) drives jump. Keys are HELD
+      // while the hand stays in a zone, center = release/stop.
+      const x = 1 - px;   // mirrored to match the preview
       if (joy.left) {
-        if (x > Z_LEFT.off) { sendKey("left", "up"); joy.left = false; }
-      } else if (x < Z_LEFT.on) {
+        if (x > JOY_L_OFF) { sendKey("left", "up"); joy.left = false; }
+      } else if (x < JOY_L_ON) {
         sendKey("left", "down"); joy.left = true;
       }
       if (joy.right) {
-        if (x < Z_RIGHT.off) { sendKey("right", "up"); joy.right = false; }
-      } else if (x > Z_RIGHT.on) {
+        if (x < JOY_R_OFF) { sendKey("right", "up"); joy.right = false; }
+      } else if (x > JOY_R_ON) {
         sendKey("right", "down"); joy.right = true;
       }
       // Height within the active side: raise the hand clearly above the
       // shoulder/head level to also jump (taps Space repeatedly while held).
       const onSide = joy.left || joy.right;
       if (onSide) {
-        const wantJump = joy.jump ? py < Z_UP.off : py < Z_UP.on;
+        const wantJump = joy.jump ? py < JUMP_OFF : py < JUMP_ON;
         if (wantJump && !joy.jump) {
           joy.jump = true;
           joy.repeat = false;
@@ -298,7 +302,7 @@ const HandRunner = (() => {
       } else {
         // Center: raised hand = plain jump hold (no direction).
         stopJumpRepeat();
-        const wantJump = joy.jump ? py < Z_UP.off : py < Z_UP.on;
+        const wantJump = joy.jump ? py < JUMP_OFF : py < JUMP_ON;
         if (wantJump !== joy.jump) {
           sendKey("jump", wantJump ? "down" : "up");
           joy.jump = wantJump;
