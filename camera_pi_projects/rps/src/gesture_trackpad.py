@@ -62,9 +62,10 @@ EDGE_GAIN = 1.8     # up to 1.8 screen/s of drift at the frame edge
 AUTO_STOP_GRACE = 4.0  # seconds with no page viewer before the camera stops
 DETECT_W, DETECT_H = 480, 360  # downscale for detection (faster, less lag)
 
+FINGER_EXT_RATIO = 1.3  # tip must be this much farther than PIP from wrist to count as "up"
 SCROLL_DEAD = 0.014
 SCROLL_GAIN = 80
-SCROLL_SPREAD = 1.5   # index/middle tip spread must exceed this x the knuckle gap
+SCROLL_SPREAD = 1.15  # index/middle tip spread must exceed this x the knuckle gap
 
 THUMB_OUT_D45 = 0.55   # thumb tip must be > this x palm-height from index MCP
 THUMB_OUT_PALM = 0.48  # ...and > this x palm-height from the knuckle center
@@ -531,7 +532,7 @@ class GestureTrackpad:
         return sx, sy
 
     def _finger_ext(self, lm, tip, pip) -> bool:
-        return _dist(lm[tip], lm[WRIST]) > _dist(lm[pip], lm[WRIST]) * 1.15
+        return _dist(lm[tip], lm[WRIST]) > _dist(lm[pip], lm[WRIST]) * FINGER_EXT_RATIO
 
     def _palm_span(self, lm) -> float:
         return max(_dist(lm[0], lm[5]), _dist(lm[0], lm[17]), ZERO)
@@ -541,12 +542,11 @@ class GestureTrackpad:
             return False
         if not _dist(lm[8], lm[12]) > SCROLL_SPREAD * max(_dist(lm[5], lm[9]), ZERO):
             return False
-        # Ring/pinky must be clearly LOWER than the raised index — measured
-        # relative to the index so it is independent of distance/orientation.
+        # Only a full open palm blocks scroll: BOTH ring AND pinky must be
+        # nearly as raised as the index (finger coupling when signing "two
+        # fingers up" is fine — it is not an open palm).
         idx_ext = _dist(lm[8], lm[WRIST])
-        if _dist(lm[16], lm[WRIST]) > idx_ext * 0.85:
-            return False
-        if _dist(lm[20], lm[WRIST]) > idx_ext * 0.85:
+        if _dist(lm[16], lm[WRIST]) > idx_ext * 0.90 and _dist(lm[20], lm[WRIST]) > idx_ext * 0.90:
             return False
         return True
 

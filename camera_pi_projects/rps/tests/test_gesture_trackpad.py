@@ -107,7 +107,8 @@ def test_pose_classifiers():
     assert not tp._is_open_palm(point_hand())
     assert tp._is_scroll_pose(scroll_hand(spread=0.4))
     assert not tp._is_scroll_pose(point_hand())
-    assert not tp._is_scroll_pose(build_hand(index=True, middle=True, ring=True, spread=0.4))
+    assert tp._is_scroll_pose(build_hand(index=True, middle=True, ring=True, pinky=False, spread=0.4))
+    assert not tp._is_scroll_pose(build_hand(index=True, middle=True, ring=True, pinky=True, spread=0.4))
 
 
 def test_mode_transitions():
